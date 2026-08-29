@@ -7,3 +7,6 @@
 [submodule "packages/videogpt-catalog"]
 	path = packages/videogpt-catalog
 	url = git@github.com:videogpt-dev/videogpt-catalog.git
+[submodule "apps/editor"]
+	path = apps/editor
+	url = git@github.com:videogpt-dev/videogpt-studio.git

@@ -24,6 +24,8 @@ type Project = {
   last_result?: { status?: string; artifacts?: Artifact[]; error?: string };
   last_story?: StoryResult;
   last_series?: SeriesResult;
+  last_render?: { ok?: boolean; error?: string; file?: string };
+  episode_renders?: Record<string, { title?: string; render?: { ok?: boolean; error?: string; file?: string } }>;
 };
 type Artifact = Record<string, unknown>;
 type Scene = { prompt?: string; narration?: string; motion?: boolean };
@@ -49,12 +51,15 @@ export function App() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [title, setTitle] = useState("");
   const [selected, setSelected] = useState<Project | null>(null);
-  const [busy, setBusy] = useState<"" | "upload" | "url" | "run" | "story" | "series">("");
+  const [busy, setBusy] = useState<
+    "" | "upload" | "url" | "run" | "story" | "series" | "render"
+  >("");
   const [sourceUrl, setSourceUrl] = useState("");
   const [description, setDescription] = useState("");
   const [sceneCount, setSceneCount] = useState(8);
   const [premise, setPremise] = useState("");
   const [episodeCount, setEpisodeCount] = useState(6);
+  const [renderingEp, setRenderingEp] = useState<number | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   async function loadProjects() {
@@ -156,6 +161,35 @@ export function App() {
     }
   }
 
+  async function renderStory() {
+    if (!selected) return;
+    setBusy("render");
+    try {
+      const r = await fetch(`${CORE_URL}/api/projects/${selected.id}/story/render`, {
+        method: "POST",
+      });
+      if (!r.ok) alert(`Render failed: ${(await r.json()).detail ?? r.status}`);
+    } finally {
+      await refreshSelected(selected.id);
+      setBusy("");
+    }
+  }
+
+  async function renderEpisode(index: number) {
+    if (!selected) return;
+    setRenderingEp(index);
+    try {
+      const r = await fetch(
+        `${CORE_URL}/api/projects/${selected.id}/series/episodes/${index}/render`,
+        { method: "POST" },
+      );
+      if (!r.ok) alert(`Episode failed: ${(await r.json()).detail ?? r.status}`);
+    } finally {
+      await refreshSelected(selected.id);
+      setRenderingEp(null);
+    }
+  }
+
   async function planSeries() {
     if (!selected) return;
     setBusy("series");
@@ -180,6 +214,7 @@ export function App() {
   const artifacts = result?.artifacts ?? [];
   const story = selected?.last_story;
   const series = selected?.last_series;
+  const render = selected?.last_render;
 
   return (
     <StudioShell
@@ -364,6 +399,23 @@ export function App() {
                     ))}
                   </div>
                 )}
+                {story?.story && (
+                  <div className="flex flex-col gap-2">
+                    <Button disabled={busy !== ""} onClick={renderStory}>
+                      {busy === "render" ? "Rendering video..." : "Render video"}
+                    </Button>
+                    {render && render.error && (
+                      <p className="text-destructive text-xs">{render.error}</p>
+                    )}
+                    {render?.file && (
+                      <video
+                        src={`${CORE_URL}/files/${render.file}`}
+                        controls
+                        className="w-full rounded"
+                      />
+                    )}
+                  </div>
+                )}
               </div>
             )}
 
@@ -393,16 +445,39 @@ export function App() {
                 {series && series.error && (
                   <p className="text-destructive text-xs">{series.error}</p>
                 )}
-                {(series?.episodes ?? []).map((ep, i) => (
-                  <Card key={i} className="p-0">
-                    <CardContent className="flex flex-col gap-1 p-2 text-xs">
-                      <p className="font-medium">
-                        {i + 1}. {ep.title}
-                      </p>
-                      {ep.description && <p className="text-muted-foreground">{ep.description}</p>}
-                    </CardContent>
-                  </Card>
-                ))}
+                {(series?.episodes ?? []).map((ep, i) => {
+                  const epRender = selected?.episode_renders?.[String(i)]?.render;
+                  return (
+                    <Card key={i} className="p-0">
+                      <CardContent className="flex flex-col gap-1 p-2 text-xs">
+                        <p className="font-medium">
+                          {i + 1}. {ep.title}
+                        </p>
+                        {ep.description && (
+                          <p className="text-muted-foreground">{ep.description}</p>
+                        )}
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={renderingEp !== null}
+                          onClick={() => renderEpisode(i)}
+                        >
+                          {renderingEp === i ? "Generating..." : "Generate video"}
+                        </Button>
+                        {epRender?.error && (
+                          <p className="text-destructive">{epRender.error}</p>
+                        )}
+                        {epRender?.file && (
+                          <video
+                            src={`${CORE_URL}/files/${epRender.file}`}
+                            controls
+                            className="w-full rounded"
+                          />
+                        )}
+                      </CardContent>
+                    </Card>
+                  );
+                })}
               </div>
             )}
           </div>

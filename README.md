@@ -15,11 +15,11 @@ This is the self-host edition of [videogpt.dev](https://videogpt.dev). It runs t
 the cloud product uses, wired to a tiny local inference gateway, so everything happens on your
 box. The engine has three parts:
 
-- **Clips** — feed it a long video (a file or a URL), get back short vertical clips with
+- **Clips.** Feed it a long video (a file or a URL), get back short vertical clips with
   burned-in captions.
-- **Story** — turn a title and a prompt into a scene-by-scene script: logline, visual style,
-  characters, and per-scene image prompt + narration.
-- **Series** — plan connected episodes for a recurring show from a premise and a cast.
+- **Story.** Turn a title and a prompt into a generated video: a scene-by-scene script, then a
+  scene image and narration each, assembled into one mp4.
+- **Series.** Plan connected episodes for a recurring show from a premise and a cast.
 
 The paid cloud edition adds accounts, publishing to YouTube/TikTok/Instagram, a managed
 inference roster, and storage. None of that is here, and none of it is needed to run the
@@ -27,11 +27,11 @@ engine yourself.
 
 ## Status
 
-Clips is wired end to end and works today, keyless. Story writes a full scene-by-scene script
-and Series proposes an episode slate — both need `OPENROUTER_API_KEY` (they call a text model).
-Turning that script into a finished, assembled video (per-scene image/voice/music generation +
-stitching) is not in this edition yet; that pipeline lives in the cloud product. So today Story
-and Series give you the plan, and Clips gives you the finished cuts.
+Clips is wired end to end and works today, keyless. Story writes a scene-by-scene script and
+then renders a finished mp4: a generated image per scene plus narration, assembled by the
+editor service. It needs `OPENROUTER_API_KEY` (script) and `FAL_KEY` (scene images); narration
+runs on a keyless local voice. Series proposes an episode slate, then generates a full video
+for any episode the same way Story does. All three produce a finished mp4 you can download.
 
 ## What you get
 
@@ -56,22 +56,23 @@ docker compose up --build
 
 Then open:
 
-- Dashboard — http://localhost:5173
-- Core API — http://localhost:8000
+- Dashboard: http://localhost:5173
+- Core API: http://localhost:8000
 
 The first clip run downloads the whisper model into a named volume, so it is slow once and
 fast after. Output and the model cache survive `docker compose down`.
 
 ## How it fits together
 
-Four containers on a private network; only the dashboard and core are published.
+Five containers on a private network; only the dashboard and core are published.
 
 | Path | Where it lives | Job |
 |---|---|---|
 | `apps/dashboard` | this repo | the web UI |
-| `apps/core` | this repo | single-user host: projects, disk storage, drives the engine |
-| `apps/kinoforge` | [submodule](https://github.com/videogpt-dev/kinoforge) | the engine: clips, story, series (transcribe, find moments, generate, render) |
-| `services/infrelay-lite` | this repo | inference gateway (local whisper + OpenRouter + fal) |
+| `apps/core` | this repo | single-user host: projects, disk storage, drives the engine and editor |
+| `apps/kinoforge` | [submodule](https://github.com/videogpt-dev/kinoforge) | the engine: clips, story, series (transcribe, find moments, script) |
+| `apps/editor` | submodule | render service: assembles story scenes into an mp4 (ffmpeg + Remotion) |
+| `services/infrelay-lite` | this repo | inference gateway (local whisper, local voice, OpenRouter, fal) |
 
 `packages/videogpt-ui` and `packages/videogpt-catalog` are the shared UI and catalog
 libraries, pulled in as submodules.
