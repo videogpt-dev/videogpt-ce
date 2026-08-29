@@ -1,0 +1,4 @@
+@import "../../../packages/videogpt-ui/src/index.css";
+
+@source "../../../packages/videogpt-ui/src";
+@source ".";
