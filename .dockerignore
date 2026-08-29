@@ -1,0 +1,10 @@
+**/node_modules
+**/.venv
+**/__pycache__
+**/dist
+**/.react-router
+**/.pytest_cache
+**/.ruff_cache
+**/.mypy_cache
+data
+.git
