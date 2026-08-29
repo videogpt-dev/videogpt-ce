@@ -25,21 +25,40 @@ services:
       - infrelay-lite
     restart: unless-stopped
 
+  editor:
+    build:
+      context: ./apps/editor
+      dockerfile: apps/vcs-editor-service/Dockerfile
+    environment:
+      PORT: 3000
+      OUTPUT_DIR: /data/output
+    volumes:
+      - data:/data
+    expose:
+      - "3000"
+    restart: unless-stopped
+
   core:
     build: ./apps/core
     environment:
       KINOFORGE_URL: http://kinoforge:8100
       INFRELAY_URL: http://infrelay-lite:8090
+      EDITOR_URL: http://editor:3000
       CORE_DATA_DIR: /data
       KINOFORGE_SHARED_ROOT: /data/output
       STORY_TEXT_PROVIDER: ${STORY_TEXT_PROVIDER:-openrouter}
       STORY_TEXT_MODEL: ${STORY_TEXT_MODEL:-openai/gpt-4o-mini}
+      STORY_IMAGE_PROVIDER: ${STORY_IMAGE_PROVIDER:-fal}
+      STORY_IMAGE_MODEL: ${STORY_IMAGE_MODEL:-fal-ai/flux/schnell}
+      STORY_TTS_PROVIDER: ${STORY_TTS_PROVIDER:-edge}
+      STORY_TTS_VOICE: ${STORY_TTS_VOICE:-en-US-AriaNeural}
     volumes:
       - data:/data
     ports:
       - "${CORE_PORT:-8000}:8000"
     depends_on:
       - kinoforge
+      - editor
     restart: unless-stopped
 
   dashboard:

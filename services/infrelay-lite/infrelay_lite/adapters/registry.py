@@ -5,6 +5,7 @@ from __future__ import annotations
 from infrelay_lite.adapters.base import Adapter
 from infrelay_lite.adapters.image import FalImage, OpenRouterImage
 from infrelay_lite.adapters.music import FalMusic
+from infrelay_lite.adapters.edge_tts import EdgeSpeech
 from infrelay_lite.adapters.speech import FalSpeech
 from infrelay_lite.adapters.text import OpenRouterText
 from infrelay_lite.adapters.video import FalVideo
@@ -18,6 +19,7 @@ _ADAPTERS: list[Adapter] = [
     FalVideo(),
     FalMusic(),
     FalSpeech(),
+    EdgeSpeech(),
     LocalWhisper(),
 ]
 

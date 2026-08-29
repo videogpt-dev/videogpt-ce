@@ -8,7 +8,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from core.config import settings
-from core import engine, store
+from core import engine, story_pipeline, store
 
 app = FastAPI(title="self-hosted-core")
 
@@ -157,6 +157,25 @@ async def write_project_story(project_id: str, options: dict | None = None) -> d
     return result
 
 
+@app.post("/api/projects/{project_id}/story/render")
+async def render_project_story(project_id: str) -> dict:
+    project = store.get_project(project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="project not found")
+    story = (project.get("last_story") or {}).get("story")
+    if not story:
+        raise HTTPException(status_code=400, detail="write the story first")
+    try:
+        result = await story_pipeline.render_story(project_id, story)
+    except httpx.HTTPStatusError as exc:
+        raise HTTPException(status_code=502, detail=exc.response.text[:500]) from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=502, detail=f"render service unreachable: {exc}") from exc
+    project["last_render"] = result
+    store.save_project(project)
+    return result
+
+
 @app.post("/api/projects/{project_id}/series")
 async def plan_project_series(project_id: str, options: dict | None = None) -> dict:
     project = store.get_project(project_id)
@@ -173,6 +192,39 @@ async def plan_project_series(project_id: str, options: dict | None = None) -> d
     project["last_series"] = res
     store.save_project(project)
     return result
+
+
+@app.post("/api/projects/{project_id}/series/episodes/{index}/render")
+async def render_series_episode(project_id: str, index: int) -> dict:
+    project = store.get_project(project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="project not found")
+    episodes = (project.get("last_series") or {}).get("episodes") or []
+    if index < 0 or index >= len(episodes):
+        raise HTTPException(status_code=404, detail="episode not found")
+    episode = episodes[index]
+    episode_pid = f"{project_id}-ep{index}"
+    options = {
+        "description": episode.get("description") or "",
+        "series_name": project.get("title", ""),
+        "series_position": index,
+    }
+    write_req = engine.build_story_request(episode_pid, episode.get("title") or "", options)
+    try:
+        written = await engine.run_story(write_req)
+        story = (written.get("result") or {}).get("story")
+        if not story:
+            error = (written.get("result") or {}).get("error") or "story write failed"
+            raise HTTPException(status_code=502, detail=error)
+        rendered = await story_pipeline.render_story(episode_pid, story)
+    except httpx.HTTPStatusError as exc:
+        raise HTTPException(status_code=502, detail=exc.response.text[:500]) from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=502, detail=f"engine unreachable: {exc}") from exc
+    renders = project.setdefault("episode_renders", {})
+    renders[str(index)] = {"title": episode.get("title"), "render": rendered}
+    store.save_project(project)
+    return rendered
 
 
 @app.api_route("/api/engine/{path:path}", methods=["GET", "POST"])

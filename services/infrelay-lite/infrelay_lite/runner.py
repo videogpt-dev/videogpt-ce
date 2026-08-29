@@ -14,7 +14,7 @@ _PROVIDER_ENV: dict[str, str] = {
 }
 
 # On-box providers that need no account key.
-_LOCAL_PROVIDERS: set[str] = {"whisper"}
+_LOCAL_PROVIDERS: set[str] = {"whisper", "edge"}
 
 
 def _platform_key(provider: str) -> str:
