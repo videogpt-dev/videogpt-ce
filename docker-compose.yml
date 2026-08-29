@@ -32,6 +32,8 @@ services:
       INFRELAY_URL: http://infrelay-lite:8090
       CORE_DATA_DIR: /data
       KINOFORGE_SHARED_ROOT: /data/output
+      STORY_TEXT_PROVIDER: ${STORY_TEXT_PROVIDER:-openrouter}
+      STORY_TEXT_MODEL: ${STORY_TEXT_MODEL:-openai/gpt-4o-mini}
     volumes:
       - data:/data
     ports:

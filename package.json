@@ -1,6 +1,7 @@
 {
-  "name": "videogpt-self-hosted",
+  "name": "videogpt-ce",
   "private": true,
+  "license": "SEE LICENSE IN LICENSE",
   "type": "module",
   "packageManager": "pnpm@11.18.0",
   "engines": {
