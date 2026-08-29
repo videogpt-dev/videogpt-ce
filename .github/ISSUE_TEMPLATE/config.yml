@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/videogpt-dev/videogpt-ce/security/advisories/new
+    about: Report security issues privately, not in a public issue.
+  - name: Cloud edition / commercial use
+    url: https://videogpt.dev
+    about: Accounts, publishing, managed inference, and commercial use.

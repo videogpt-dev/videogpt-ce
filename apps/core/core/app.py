@@ -139,6 +139,42 @@ async def run_project_clips(project_id: str, options: dict | None = None) -> dic
     return result
 
 
+@app.post("/api/projects/{project_id}/story")
+async def write_project_story(project_id: str, options: dict | None = None) -> dict:
+    project = store.get_project(project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="project not found")
+    request = engine.build_story_request(project_id, project.get("title", ""), options or {})
+    try:
+        result = await engine.run_story(request)
+    except httpx.HTTPStatusError as exc:
+        raise HTTPException(status_code=502, detail=exc.response.text[:500]) from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=502, detail=f"engine unreachable: {exc}") from exc
+    res = result.get("result", {})
+    project["last_story"] = res
+    store.save_project(project)
+    return result
+
+
+@app.post("/api/projects/{project_id}/series")
+async def plan_project_series(project_id: str, options: dict | None = None) -> dict:
+    project = store.get_project(project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="project not found")
+    request = engine.build_series_request(project_id, project.get("title", ""), options or {})
+    try:
+        result = await engine.run_series(request)
+    except httpx.HTTPStatusError as exc:
+        raise HTTPException(status_code=502, detail=exc.response.text[:500]) from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=502, detail=f"engine unreachable: {exc}") from exc
+    res = result.get("result", {})
+    project["last_series"] = res
+    store.save_project(project)
+    return result
+
+
 @app.api_route("/api/engine/{path:path}", methods=["GET", "POST"])
 async def engine_proxy(path: str, request: Request) -> Response:
     url = f"{settings.kinoforge_url}/v1/{path}"

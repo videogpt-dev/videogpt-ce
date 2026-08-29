@@ -10,6 +10,9 @@ class Settings:
         self.output_dir = Path(
             os.getenv("KINOFORGE_SHARED_ROOT") or (self.data_dir / "output")
         ).resolve()
+        self.story_provider = os.getenv("STORY_TEXT_PROVIDER") or "openrouter"
+        self.story_model = os.getenv("STORY_TEXT_MODEL") or "openai/gpt-4o-mini"
+        self.story_token_budget = int(os.getenv("STORY_TOKEN_BUDGET") or 4000)
 
     @property
     def projects_dir(self) -> Path:

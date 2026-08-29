@@ -24,11 +24,10 @@ FAL_KEY=... OPENROUTER_API_KEY=... uvicorn infrelay_lite.app:app --port 8090
 
 ## Wiring Kinoforge to it
 
-Kinoforge reaches the gateway through two env vars:
+Kinoforge reaches the gateway through one env var:
 
 ```sh
 INFRELAY_URL=http://localhost:8090
-INFRELAY_SERVICE_TOKEN=<same value as INFRELAY_SERVICE_TOKEN here>   # omit in dev
 ```
 
 ## API
@@ -39,16 +38,22 @@ INFRELAY_SERVICE_TOKEN=<same value as INFRELAY_SERVICE_TOKEN here>   # omit in d
 | GET | `/v1/models?kind=` | which providers serve a kind (lite ships no model catalog) |
 | POST | `/v1/generate` | `{kind, provider, model, input, credential?}` -> `{output:{type,value,meta}, usage}` |
 
-`kind` is one of `text`, `image`, `video`, `music`, `audio`. Pass the provider's own `model`
-id directly. `output.type` is `url`, `b64`, or `text`; the caller downloads or stores it.
+`kind` is one of `text`, `image`, `video`, `music`, `audio`, `transcribe`. Pass the provider's
+own `model` id directly. `output.type` is `url`, `b64`, `text`, or `transcript`; the caller
+downloads or stores it.
 
 ## Auth
 
-`/v1/*` is gated by `INFRELAY_SERVICE_TOKEN` (HTTP Bearer). An unset token serves only when
-`INFRELAY_ENV=dev`; any other env refuses gated routes (503) so a deploy is never accidentally
-open. `/health` is always open.
+No auth. It's meant to run on the single-user internal Docker network alongside the engine.
+Don't expose it to the public internet.
+
+## Transcription
+
+The `transcribe` kind runs a local `faster-whisper` model in-process (`provider="whisper"`),
+so clips work with no provider key. The model downloads on first use into `HF_HOME`
+(a named volume in the stack).
 
 ## Not in lite
 
-Transcription (STT), extra providers, routing, key pooling, credits, and admin all live in the
-full cloud gateway. Self-host installs that need those point `INFRELAY_URL` at the cloud one.
+Extra providers, routing, key pooling, credits, and admin all live in the full cloud gateway.
+Self-host installs that need those point `INFRELAY_URL` at the cloud one.

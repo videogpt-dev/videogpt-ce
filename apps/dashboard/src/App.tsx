@@ -22,8 +22,19 @@ type Project = {
   created_at: number;
   source?: string;
   last_result?: { status?: string; artifacts?: Artifact[]; error?: string };
+  last_story?: StoryResult;
+  last_series?: SeriesResult;
 };
 type Artifact = Record<string, unknown>;
+type Scene = { prompt?: string; narration?: string; motion?: boolean };
+type StoryResult = {
+  ok?: boolean;
+  error?: string;
+  story?: { logline?: string; style?: string; characters?: { name?: string; description?: string }[]; scenes?: Scene[] };
+  warnings?: string[];
+};
+type Episode = { title?: string; description?: string };
+type SeriesResult = { ok?: boolean; error?: string; episodes?: Episode[] };
 
 function artifactHref(a: Artifact): string | null {
   const rel = (a.rel ?? a.rel_path ?? a.url ?? a.file ?? a.path) as string | undefined;
@@ -38,8 +49,12 @@ export function App() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [title, setTitle] = useState("");
   const [selected, setSelected] = useState<Project | null>(null);
-  const [busy, setBusy] = useState<"" | "upload" | "url" | "run">("");
+  const [busy, setBusy] = useState<"" | "upload" | "url" | "run" | "story" | "series">("");
   const [sourceUrl, setSourceUrl] = useState("");
+  const [description, setDescription] = useState("");
+  const [sceneCount, setSceneCount] = useState(8);
+  const [premise, setPremise] = useState("");
+  const [episodeCount, setEpisodeCount] = useState(6);
   const fileRef = useRef<HTMLInputElement>(null);
 
   async function loadProjects() {
@@ -125,8 +140,46 @@ export function App() {
     }
   }
 
+  async function writeStory() {
+    if (!selected) return;
+    setBusy("story");
+    try {
+      const r = await fetch(`${CORE_URL}/api/projects/${selected.id}/story`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ description, scene_count: sceneCount }),
+      });
+      if (!r.ok) alert(`Story failed: ${(await r.json()).detail ?? r.status}`);
+    } finally {
+      await refreshSelected(selected.id);
+      setBusy("");
+    }
+  }
+
+  async function planSeries() {
+    if (!selected) return;
+    setBusy("series");
+    try {
+      const r = await fetch(`${CORE_URL}/api/projects/${selected.id}/series`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ premise, count: episodeCount }),
+      });
+      if (!r.ok) alert(`Series failed: ${(await r.json()).detail ?? r.status}`);
+    } finally {
+      await refreshSelected(selected.id);
+      setBusy("");
+    }
+  }
+
+  const kind = (selected?.kind ?? "").toLowerCase();
+  const isStory = kind === "story";
+  const isSeries = kind === "series";
+  const isClips = !isStory && !isSeries;
   const result = selected?.last_result;
   const artifacts = result?.artifacts ?? [];
+  const story = selected?.last_story;
+  const series = selected?.last_series;
 
   return (
     <StudioShell
@@ -182,6 +235,8 @@ export function App() {
               <p className="text-muted-foreground text-xs">{selected.kind}</p>
             </div>
 
+            {isClips && (
+            <>
             <div className="flex flex-col gap-2">
               <p className="text-muted-foreground text-xs font-medium uppercase">Source</p>
               {selected.source ? (
@@ -253,6 +308,103 @@ export function App() {
                 )}
               </div>
             )}
+            </>
+            )}
+
+            {isStory && (
+              <div className="flex flex-col gap-2">
+                <p className="text-muted-foreground text-xs font-medium uppercase">Story</p>
+                <textarea
+                  className="border-input bg-background min-h-20 rounded-md border p-2 text-xs"
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  placeholder="Describe the idea to turn into a narrated video..."
+                />
+                <div className="flex items-center gap-2">
+                  <span className="text-muted-foreground text-xs">Scenes</span>
+                  <Input
+                    type="number"
+                    min={1}
+                    max={64}
+                    value={sceneCount}
+                    onChange={(e) => setSceneCount(Number(e.target.value) || 8)}
+                    className="w-20"
+                  />
+                </div>
+                <Button disabled={busy !== ""} onClick={writeStory}>
+                  {busy === "story" ? "Writing..." : "Write story"}
+                </Button>
+                {story && story.error && <p className="text-destructive text-xs">{story.error}</p>}
+                {story?.story && (
+                  <div className="flex flex-col gap-2">
+                    {story.story.logline && (
+                      <p className="text-xs">
+                        <span className="font-semibold">Logline. </span>
+                        {story.story.logline}
+                      </p>
+                    )}
+                    {story.story.style && (
+                      <p className="text-muted-foreground text-xs">{story.story.style}</p>
+                    )}
+                    {(story.story.scenes ?? []).map((s, i) => (
+                      <Card key={i} className="p-0">
+                        <CardContent className="flex flex-col gap-1 p-2 text-xs">
+                          <p className="font-medium">Scene {i + 1}</p>
+                          <p>{s.prompt}</p>
+                          {s.narration && (
+                            <p className="text-muted-foreground italic">&ldquo;{s.narration}&rdquo;</p>
+                          )}
+                        </CardContent>
+                      </Card>
+                    ))}
+                    {(story.warnings ?? []).map((w, i) => (
+                      <p key={i} className="text-muted-foreground text-xs">
+                        {w}
+                      </p>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {isSeries && (
+              <div className="flex flex-col gap-2">
+                <p className="text-muted-foreground text-xs font-medium uppercase">Series</p>
+                <textarea
+                  className="border-input bg-background min-h-20 rounded-md border p-2 text-xs"
+                  value={premise}
+                  onChange={(e) => setPremise(e.target.value)}
+                  placeholder="Describe the premise of the show..."
+                />
+                <div className="flex items-center gap-2">
+                  <span className="text-muted-foreground text-xs">Episodes</span>
+                  <Input
+                    type="number"
+                    min={1}
+                    max={12}
+                    value={episodeCount}
+                    onChange={(e) => setEpisodeCount(Number(e.target.value) || 6)}
+                    className="w-20"
+                  />
+                </div>
+                <Button disabled={busy !== ""} onClick={planSeries}>
+                  {busy === "series" ? "Planning..." : "Plan episodes"}
+                </Button>
+                {series && series.error && (
+                  <p className="text-destructive text-xs">{series.error}</p>
+                )}
+                {(series?.episodes ?? []).map((ep, i) => (
+                  <Card key={i} className="p-0">
+                    <CardContent className="flex flex-col gap-1 p-2 text-xs">
+                      <p className="font-medium">
+                        {i + 1}. {ep.title}
+                      </p>
+                      {ep.description && <p className="text-muted-foreground">{ep.description}</p>}
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
           </div>
         ) : undefined
       }
@@ -283,7 +435,7 @@ export function App() {
             <SegmentPicker
               segments={segments}
               actionLabel="Start"
-              onValueChange={(code, seg) => create(code, seg.name)}
+              onValueChange={(code, seg) => create(code, title.trim() || seg.name)}
             />
           )}
         </div>
