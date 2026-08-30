@@ -1,6 +1,8 @@
 packages:
   - apps/*
   - packages/*
+  - studio/apps/*
+  - studio/packages/*
 
 catalogMode: prefer
 

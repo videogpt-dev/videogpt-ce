@@ -27,7 +27,7 @@ services:
 
   editor:
     build:
-      context: ./apps/editor
+      context: ./studio
       dockerfile: apps/vcs-editor-service/Dockerfile
     environment:
       PORT: 3000
