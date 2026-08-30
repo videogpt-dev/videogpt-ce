@@ -71,7 +71,7 @@ Five containers on a private network; only the dashboard and core are published.
 | `apps/dashboard` | this repo | the web UI |
 | `apps/core` | this repo | single-user host: projects, disk storage, drives the engine and editor |
 | `apps/kinoforge` | [submodule](https://github.com/videogpt-dev/kinoforge) | the engine: clips, story, series (transcribe, find moments, script) |
-| `apps/editor` | submodule | render service: assembles story scenes into an mp4 (ffmpeg + Remotion) |
+| `studio` | [submodule](https://github.com/videogpt-dev/videogpt-studio) | render service: assembles story scenes into an mp4 (ffmpeg + Remotion) |
 | `services/infrelay-lite` | this repo | inference gateway (local whisper, local voice, OpenRouter, fal) |
 
 `packages/videogpt-ui` and `packages/videogpt-catalog` are the shared UI and catalog
