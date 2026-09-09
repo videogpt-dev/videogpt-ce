@@ -23,6 +23,12 @@ class Settings(BaseSettings):
     fal_key: str = ""
     openrouter_api_key: str = ""
 
+    # Managed cloud gateway (provider "cloud"): the user's dashboard-minted key + the hosted
+    # infrelay URL. When set, picking provider "cloud" routes to the full cloud roster and
+    # spends this key's credits. Left blank, the cloud provider is simply unavailable.
+    videogpt_api_key: str = ""
+    videogpt_cloud_url: str = ""
+
     @property
     def is_dev(self) -> bool:
         return self.infrelay_env.strip().lower() == "dev"

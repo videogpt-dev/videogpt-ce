@@ -7,10 +7,12 @@ from infrelay_lite.adapters.registry import find, providers_for
 from infrelay_lite.config import settings
 from infrelay_lite.models import Credential, MediaKind
 
-# The only two keyed providers lite ships. Key comes from this env var unless a request injects one.
+# Keyed providers lite ships. Key comes from this env var unless a request injects one.
+# "cloud" is the managed hosted gateway, keyed by the user's dashboard-minted API key.
 _PROVIDER_ENV: dict[str, str] = {
     "fal": "FAL_KEY",
     "openrouter": "OPENROUTER_API_KEY",
+    "cloud": "VIDEOGPT_API_KEY",
 }
 
 # On-box providers that need no account key.
@@ -22,6 +24,8 @@ def _platform_key(provider: str) -> str:
         return settings().fal_key
     if provider == "openrouter":
         return settings().openrouter_api_key
+    if provider == "cloud":
+        return settings().videogpt_api_key
     return ""
 
 

@@ -1,4 +1,4 @@
-import subprocess
+import asyncio
 from pathlib import Path
 
 import httpx
@@ -7,8 +7,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from core import engine, jobs, store, story_pipeline
 from core.config import settings
-from core import engine, story_pipeline, store
 
 app = FastAPI(title="self-hosted-core")
 
@@ -32,6 +32,36 @@ class SourceUrlIn(BaseModel):
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok", "engine": settings.kinoforge_url}
+
+
+@app.get("/api/inference/providers")
+async def inference_providers(kind: str = "text") -> dict:
+    headers = {}
+    if settings.infrelay_service_token:
+        headers["Authorization"] = f"Bearer {settings.infrelay_service_token}"
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            response = await client.get(
+                f"{settings.infrelay_url}/v1/models",
+                params={"kind": kind},
+                headers=headers,
+            )
+        response.raise_for_status()
+        payload = response.json()
+    except (httpx.HTTPError, ValueError) as exc:
+        raise HTTPException(status_code=502, detail="infrelay provider catalog unavailable") from exc
+
+    providers = sorted(
+        {
+            str(item.get("provider") or "").strip()
+            for item in payload.get("items", [])
+            if str(item.get("provider") or "").strip()
+        }
+    )
+    return {
+        "items": [{"provider": provider, "kind": kind} for provider in providers],
+        "total": len(providers),
+    }
 
 
 @app.get("/api/projects")
@@ -76,58 +106,58 @@ async def upload_source(project_id: str, file: UploadFile = File(...)) -> dict:
     return {"ok": True, "source": project["source"]}
 
 
+async def _download_source(project: dict, url: str, rep: jobs.Reporter) -> dict:
+    project_id = project["id"]
+    dest_dir = settings.output_dir / project_id
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    for old in dest_dir.glob("source.*"):
+        old.unlink()
+    rep.phase(f"downloading {url}")
+    proc = await asyncio.create_subprocess_exec(
+        "yt-dlp",
+        "-f",
+        "bestvideo*+bestaudio/best",
+        "--merge-output-format",
+        "mp4",
+        "--newline",
+        "-o",
+        str(dest_dir / "source.%(ext)s"),
+        url,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.STDOUT,
+    )
+    assert proc.stdout is not None
+    async for raw in proc.stdout:
+        rep.log(raw.decode(errors="replace"))
+    code = await proc.wait()
+    if code != 0:
+        return {"ok": False, "error": "download failed"}
+    files = list(dest_dir.glob("source.*"))
+    if not files:
+        return {"ok": False, "error": "no file downloaded"}
+    project["source"] = f"{project_id}/{files[0].name}"
+    project["source_url"] = url
+    store.save_project(project)
+    rep.phase("download complete")
+    return {"ok": True, "source": project["source"]}
+
+
 @app.post("/api/projects/{project_id}/source-url")
-def source_from_url(project_id: str, body: SourceUrlIn) -> dict:
+async def source_from_url(project_id: str, body: SourceUrlIn) -> dict:
     project = store.get_project(project_id)
     if project is None:
         raise HTTPException(status_code=404, detail="project not found")
     url = body.url.strip()
     if not url:
         raise HTTPException(status_code=400, detail="url required")
-    dest_dir = settings.output_dir / project_id
-    dest_dir.mkdir(parents=True, exist_ok=True)
-    for old in dest_dir.glob("source.*"):
-        old.unlink()
-    proc = subprocess.run(
-        [
-            "yt-dlp",
-            "-f",
-            "bestvideo*+bestaudio/best",
-            "--merge-output-format",
-            "mp4",
-            "-o",
-            str(dest_dir / "source.%(ext)s"),
-            url,
-        ],
-        capture_output=True,
-        text=True,
-    )
-    if proc.returncode != 0:
-        raise HTTPException(status_code=502, detail=(proc.stderr or "download failed")[-500:])
-    files = list(dest_dir.glob("source.*"))
-    if not files:
-        raise HTTPException(status_code=502, detail="no file downloaded")
-    project["source"] = f"{project_id}/{files[0].name}"
-    project["source_url"] = url
-    store.save_project(project)
-    return {"ok": True, "source": project["source"]}
+    job = jobs.start(project_id, "url", lambda rep: _download_source(project, url, rep))
+    return {"job_id": job["id"]}
 
 
-@app.post("/api/projects/{project_id}/clips")
-async def run_project_clips(project_id: str, options: dict | None = None) -> dict:
-    project = store.get_project(project_id)
-    if project is None:
-        raise HTTPException(status_code=404, detail="project not found")
-    source = project.get("source")
-    if not source:
-        raise HTTPException(status_code=400, detail="upload a source video first")
-    request = engine.build_clips_request(project_id, source, options or {})
-    try:
-        result = await engine.run_clips(request)
-    except httpx.HTTPStatusError as exc:
-        raise HTTPException(status_code=502, detail=exc.response.text[:500]) from exc
-    except httpx.HTTPError as exc:
-        raise HTTPException(status_code=502, detail=f"engine unreachable: {exc}") from exc
+async def _run_clips(project: dict, options: dict, rep: jobs.Reporter) -> dict:
+    request = engine.build_clips_request(project["id"], project["source"], options)
+    rep.phase("engine: transcribe, select moments, render")
+    result = await engine.run_clips(request)
     res = result.get("result", {})
     for art in res.get("artifacts", []):
         try:
@@ -136,7 +166,40 @@ async def run_project_clips(project_id: str, options: dict | None = None) -> dic
             art["rel"] = art.get("path", "")
     project["last_result"] = res
     store.save_project(project)
-    return result
+    rep.phase(f"{len(res.get('artifacts', []))} clips")
+    return res
+
+
+@app.post("/api/projects/{project_id}/clips")
+async def run_project_clips(project_id: str, options: dict | None = None) -> dict:
+    project = store.get_project(project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="project not found")
+    if not project.get("source"):
+        raise HTTPException(status_code=400, detail="upload a source video first")
+    clip_options = options or {}
+    project["clip_options"] = clip_options
+    store.save_project(project)
+    job = jobs.start(project_id, "clips", lambda rep: _run_clips(project, clip_options, rep))
+    return {"job_id": job["id"]}
+
+
+async def _write_story(project: dict, options: dict, rep: jobs.Reporter) -> dict:
+    request = engine.build_story_request(project["id"], project.get("title", ""), options)
+    rep.phase("writing script")
+    result = await engine.run_story(request)
+    res = result.get("result", {})
+    # A chosen visual-style preset overrides the writer's style; story_pipeline appends it to
+    # every scene's image prompt as "Visual style: <style>".
+    style = str(options.get("style") or "").strip()
+    if style and isinstance(res.get("story"), dict):
+        res["story"]["style"] = style
+    project["last_story"] = res
+    store.save_project(project)
+    if res.get("error"):
+        return res
+    rep.phase(f"{len(res.get('story', {}).get('scenes', []))} scenes")
+    return res
 
 
 @app.post("/api/projects/{project_id}/story")
@@ -144,15 +207,19 @@ async def write_project_story(project_id: str, options: dict | None = None) -> d
     project = store.get_project(project_id)
     if project is None:
         raise HTTPException(status_code=404, detail="project not found")
-    request = engine.build_story_request(project_id, project.get("title", ""), options or {})
-    try:
-        result = await engine.run_story(request)
-    except httpx.HTTPStatusError as exc:
-        raise HTTPException(status_code=502, detail=exc.response.text[:500]) from exc
-    except httpx.HTTPError as exc:
-        raise HTTPException(status_code=502, detail=f"engine unreachable: {exc}") from exc
-    res = result.get("result", {})
-    project["last_story"] = res
+    story_brief = options or {}
+    project["story_brief"] = story_brief
+    store.save_project(project)
+    job = jobs.start(project_id, "story", lambda rep: _write_story(project, story_brief, rep))
+    return {"job_id": job["id"]}
+
+
+async def _render_story(project: dict, rep: jobs.Reporter) -> dict:
+    story = (project.get("last_story") or {}).get("story")
+    if not story:
+        return {"ok": False, "error": "write the story first"}
+    result = await story_pipeline.render_story(project["id"], story, report=rep)
+    project["last_render"] = result
     store.save_project(project)
     return result
 
@@ -162,18 +229,21 @@ async def render_project_story(project_id: str) -> dict:
     project = store.get_project(project_id)
     if project is None:
         raise HTTPException(status_code=404, detail="project not found")
-    story = (project.get("last_story") or {}).get("story")
-    if not story:
-        raise HTTPException(status_code=400, detail="write the story first")
-    try:
-        result = await story_pipeline.render_story(project_id, story)
-    except httpx.HTTPStatusError as exc:
-        raise HTTPException(status_code=502, detail=exc.response.text[:500]) from exc
-    except httpx.HTTPError as exc:
-        raise HTTPException(status_code=502, detail=f"render service unreachable: {exc}") from exc
-    project["last_render"] = result
+    job = jobs.start(project_id, "render", lambda rep: _render_story(project, rep))
+    return {"job_id": job["id"]}
+
+
+async def _plan_series(project: dict, options: dict, rep: jobs.Reporter) -> dict:
+    request = engine.build_series_request(project["id"], project.get("title", ""), options)
+    rep.phase("planning episodes")
+    result = await engine.run_series(request)
+    res = result.get("result", {})
+    project["last_series"] = res
     store.save_project(project)
-    return result
+    if res.get("error"):
+        return res
+    rep.phase(f"{len(res.get('episodes', []))} episodes")
+    return res
 
 
 @app.post("/api/projects/{project_id}/series")
@@ -181,17 +251,33 @@ async def plan_project_series(project_id: str, options: dict | None = None) -> d
     project = store.get_project(project_id)
     if project is None:
         raise HTTPException(status_code=404, detail="project not found")
-    request = engine.build_series_request(project_id, project.get("title", ""), options or {})
-    try:
-        result = await engine.run_series(request)
-    except httpx.HTTPStatusError as exc:
-        raise HTTPException(status_code=502, detail=exc.response.text[:500]) from exc
-    except httpx.HTTPError as exc:
-        raise HTTPException(status_code=502, detail=f"engine unreachable: {exc}") from exc
-    res = result.get("result", {})
-    project["last_series"] = res
+    series_brief = options or {}
+    project["series_brief"] = series_brief
     store.save_project(project)
-    return result
+    job = jobs.start(project_id, "series", lambda rep: _plan_series(project, series_brief, rep))
+    return {"job_id": job["id"]}
+
+
+async def _render_episode(project: dict, index: int, rep: jobs.Reporter) -> dict:
+    episode = ((project.get("last_series") or {}).get("episodes") or [])[index]
+    episode_pid = f"{project['id']}-ep{index}"
+    options = {
+        "description": episode.get("description") or "",
+        "series_name": project.get("title", ""),
+        "series_position": index,
+    }
+    rep.phase(f"episode {index + 1}: writing script")
+    write_req = engine.build_story_request(episode_pid, episode.get("title") or "", options)
+    written = await engine.run_story(write_req)
+    story = (written.get("result") or {}).get("story")
+    if not story:
+        error = (written.get("result") or {}).get("error") or "story write failed"
+        return {"ok": False, "error": error}
+    rendered = await story_pipeline.render_story(episode_pid, story, report=rep)
+    renders = project.setdefault("episode_renders", {})
+    renders[str(index)] = {"title": episode.get("title"), "render": rendered}
+    store.save_project(project)
+    return rendered
 
 
 @app.post("/api/projects/{project_id}/series/episodes/{index}/render")
@@ -202,29 +288,23 @@ async def render_series_episode(project_id: str, index: int) -> dict:
     episodes = (project.get("last_series") or {}).get("episodes") or []
     if index < 0 or index >= len(episodes):
         raise HTTPException(status_code=404, detail="episode not found")
-    episode = episodes[index]
-    episode_pid = f"{project_id}-ep{index}"
-    options = {
-        "description": episode.get("description") or "",
-        "series_name": project.get("title", ""),
-        "series_position": index,
-    }
-    write_req = engine.build_story_request(episode_pid, episode.get("title") or "", options)
-    try:
-        written = await engine.run_story(write_req)
-        story = (written.get("result") or {}).get("story")
-        if not story:
-            error = (written.get("result") or {}).get("error") or "story write failed"
-            raise HTTPException(status_code=502, detail=error)
-        rendered = await story_pipeline.render_story(episode_pid, story)
-    except httpx.HTTPStatusError as exc:
-        raise HTTPException(status_code=502, detail=exc.response.text[:500]) from exc
-    except httpx.HTTPError as exc:
-        raise HTTPException(status_code=502, detail=f"engine unreachable: {exc}") from exc
-    renders = project.setdefault("episode_renders", {})
-    renders[str(index)] = {"title": episode.get("title"), "render": rendered}
-    store.save_project(project)
-    return rendered
+    job = jobs.start(
+        project_id, f"episode:{index}", lambda rep: _render_episode(project, index, rep)
+    )
+    return {"job_id": job["id"]}
+
+
+@app.get("/api/jobs/{job_id}")
+def one_job(job_id: str) -> dict:
+    job = jobs.get(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="job not found")
+    return job
+
+
+@app.get("/api/projects/{project_id}/jobs")
+def project_jobs(project_id: str) -> list[dict]:
+    return jobs.list_for_project(project_id)
 
 
 @app.api_route("/api/engine/{path:path}", methods=["GET", "POST"])

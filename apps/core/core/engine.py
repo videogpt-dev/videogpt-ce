@@ -25,6 +25,7 @@ def build_clips_request(project_id: str, video_rel: str, options: dict[str, Any]
         "formats": options.get("formats") or ["9:16"],
         "quality": options.get("quality", "high"),
         "generate_captions": bool(options.get("generate_captions", True)),
+        "subtitle_font_size": int(options.get("subtitle_font_size", 14)),
         "analyze_only": bool(options.get("analyze_only", False)),
         "min_interest_score": float(options.get("min_interest_score", 0.3)),
         "moment_route": {},
@@ -51,7 +52,7 @@ def build_clips_request(project_id: str, video_rel: str, options: dict[str, Any]
         "rendering": {
             "burn_subtitles": opts["generate_captions"],
             "mute_output": False,
-            "subtitle_font_size": 24,
+            "subtitle_font_size": opts["subtitle_font_size"],
         },
     }
     workspace = str(settings.output_dir / project_id)
@@ -142,5 +143,19 @@ async def _post(path: str, request: dict[str, Any]) -> dict[str, Any]:
     headers = {"content-type": "application/json"}
     async with httpx.AsyncClient(timeout=None) as client:
         resp = await client.post(url, json=request, headers=headers)
-    resp.raise_for_status()
+    if resp.is_error:
+        raise RuntimeError(f"kinoforge {resp.status_code}: {_error_detail(resp)}")
     return resp.json()
+
+
+def _error_detail(resp: httpx.Response) -> str:
+    try:
+        detail = resp.json().get("detail")
+    except ValueError:
+        return resp.text.strip() or resp.reason_phrase
+    if isinstance(detail, list):
+        return "; ".join(
+            f"{'.'.join(str(p) for p in item.get('loc', [])[1:])}: {item.get('msg', '')}".strip(": ")
+            for item in detail
+        )
+    return str(detail) if detail else resp.reason_phrase
