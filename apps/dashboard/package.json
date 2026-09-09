@@ -2,25 +2,33 @@
   "name": "self-hosted-dashboard",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=22.22"
+  },
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "typecheck": "tsc --noEmit"
+    "dev": "react-router dev",
+    "build": "react-router build",
+    "start": "react-router-serve ./build/server/index.js",
+    "typecheck": "react-router typegen && tsc --noEmit"
   },
   "dependencies": {
     "@videogpt/ui": "workspace:*",
+    "@react-router/node": "8.0.0",
+    "@react-router/serve": "8.0.0",
+    "isbot": "^5.1.36",
     "lucide-react": "catalog:",
     "react": "catalog:",
-    "react-dom": "catalog:"
+    "react-dom": "catalog:",
+    "react-router": "catalog:"
   },
   "devDependencies": {
+    "@react-router/dev": "8.0.0",
     "@tailwindcss/vite": "catalog:",
     "@types/node": "catalog:",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
-    "@vitejs/plugin-react": "^4",
     "tailwindcss": "catalog:",
     "typescript": "catalog:",
-    "vite": "^6"
+    "vite": "catalog:"
   }
 }
