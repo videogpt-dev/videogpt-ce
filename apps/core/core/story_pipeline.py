@@ -13,18 +13,28 @@ def _scene_seconds(narration: str, duration: float) -> float:
     return max(2.0, round(words / 2.5, 2))
 
 
-async def render_story(pid: str, story: dict[str, Any], aspect: str = "9:16") -> dict[str, Any]:
+async def render_story(
+    pid: str,
+    story: dict[str, Any],
+    aspect: str = "9:16",
+    report: Any = None,
+) -> dict[str, Any]:
     scenes = story.get("scenes") or []
     if not scenes:
         return {"ok": False, "error": "story has no scenes to render"}
     style = (story.get("style") or "").strip()
+    total = len(scenes)
 
     built: list[dict[str, Any]] = []
     for i, scene in enumerate(scenes):
         prompt = (scene.get("prompt") or "").strip()
         if style:
             prompt = f"{prompt}. Visual style: {style}"
+        if report:
+            report.phase(f"scene {i + 1}/{total}: image", step=i, total=total)
         image_rel = await media.save_image(pid, i, prompt, aspect)
+        if report:
+            report.phase(f"scene {i + 1}/{total}: narration", step=i, total=total)
         voice = await media.save_voice(pid, i, scene.get("narration") or "", settings.tts_voice)
         built.append(
             {
@@ -48,6 +58,8 @@ async def render_story(pid: str, story: dict[str, Any], aspect: str = "9:16") ->
         "out_dir": pid,
         "scenes": built,
     }
+    if report:
+        report.phase("assembling video", step=total, total=total)
     async with httpx.AsyncClient(timeout=None) as client:
         resp = await client.post(f"{settings.editor_url}/render-story", json=body)
     resp.raise_for_status()

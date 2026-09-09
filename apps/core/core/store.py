@@ -28,7 +28,7 @@ def get_project(project_id: str) -> dict[str, Any] | None:
 
 def create_project(title: str, kind: str) -> dict[str, Any]:
     settings.projects_dir.mkdir(parents=True, exist_ok=True)
-    project = {
+    project: dict[str, Any] = {
         "id": uuid.uuid4().hex,
         "title": title,
         "kind": kind,
