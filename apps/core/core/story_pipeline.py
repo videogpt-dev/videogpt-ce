@@ -24,17 +24,22 @@ async def render_story(
         return {"ok": False, "error": "story has no scenes to render"}
     style = (story.get("style") or "").strip()
     total = len(scenes)
+    # Reserve one extra step for the assemble phase so it does not read 100% while the
+    # (longest) render is still running.
+    steps = total + 1
 
     built: list[dict[str, Any]] = []
     for i, scene in enumerate(scenes):
         prompt = (scene.get("prompt") or "").strip()
         if style:
-            prompt = f"{prompt}. Visual style: {style}"
+            # Lead with the style: image models weight the opening tokens most, so a trailing
+            # "Visual style: ..." clause barely shifts the look, while prepending it drives it.
+            prompt = f"{style}. {prompt}"
         if report:
-            report.phase(f"scene {i + 1}/{total}: image", step=i, total=total)
+            report.phase(f"scene {i + 1}/{total}: image", step=i, total=steps)
         image_rel = await media.save_image(pid, i, prompt, aspect)
         if report:
-            report.phase(f"scene {i + 1}/{total}: narration", step=i, total=total)
+            report.phase(f"scene {i + 1}/{total}: narration", step=i, total=steps)
         voice = await media.save_voice(pid, i, scene.get("narration") or "", settings.tts_voice)
         built.append(
             {
@@ -59,7 +64,7 @@ async def render_story(
         "scenes": built,
     }
     if report:
-        report.phase("assembling video", step=total, total=total)
+        report.phase("assembling video", step=total, total=steps)
     async with httpx.AsyncClient(timeout=None) as client:
         resp = await client.post(f"{settings.editor_url}/render-story", json=body)
     resp.raise_for_status()

@@ -1,4 +1,4 @@
-import { ArrowRight, Download, RefreshCw, Sparkles } from "lucide-react";
+import { Download, RefreshCw, Sparkles } from "lucide-react";
 import { useNavigate, useParams } from "react-router";
 
 import {
@@ -86,7 +86,6 @@ export function StoryProjectPage({ initial }: { initial?: ProjectSnapshot }) {
         {(result?.warnings ?? []).map((warning) => <StatusMessage key={warning} tone="warning">{warning}</StatusMessage>)}
         <div className="flex flex-wrap justify-end gap-2">
           <Button variant="outline" disabled={busy} onClick={retryStory}><RefreshCw /> Rewrite with the same brief</Button>
-          <Button disabled={busy} onClick={() => navigate(`/story/${projectId}/assemble`)}>Continue to Assemble <ArrowRight /></Button>
         </div>
       </div>
     ) : (
@@ -166,6 +165,7 @@ export function StoryProjectPage({ initial }: { initial?: ProjectSnapshot }) {
     <StoryWorkspaceLayout
       status={status}
       steps={CE_STORY_STEPS}
+      stepNav
       onStepChange={(next) => navigate(`/story/${projectId}/${next}`)}
       title={title}
       subtitle={subtitle}

@@ -17,6 +17,7 @@ export default [
     route("series/:projectId", "routes/series-redirect.ts"),
     route("series/:projectId/episodes", "routes/series-project.tsx", { id: "series-episodes" }),
     route("series/:projectId/episodes/:episodeIndex", "routes/series-project.tsx", { id: "series-episode" }),
+    route("series/:projectId/episodes/:episodeIndex/:view", "routes/series-project.tsx", { id: "series-episode-view" }),
     route("*", "routes/not-found.tsx"),
   ]),
 ] satisfies RouteConfig;
