@@ -69,6 +69,7 @@ export type Project = {
   last_series?: SeriesResult;
   last_render?: RenderResult;
   episode_renders?: Record<string, { title?: string; render?: RenderResult }>;
+  episode_stories?: Record<string, NonNullable<StoryResult["story"]>>;
 };
 
 export type Job = {

@@ -1,27 +1,35 @@
-import { Download, RefreshCw, Sparkles } from "lucide-react";
-import { Link, useParams } from "react-router";
+import { useState } from "react";
+import { Plus, RefreshCw } from "lucide-react";
+import { Link, useNavigate, useParams } from "react-router";
 
 import {
   Badge,
   Button,
   Card,
   CardContent,
-  MediaCanvas,
+  Field,
+  FieldLabel,
+  Input,
   SeriesEpisodeList,
   SeriesWorkspaceLayout,
   StatusMessage,
   type SeriesEpisode,
 } from "@videogpt/ui";
 
-import { fileUrl } from "../api";
+import { api } from "../api";
+import { EpisodeWorkspace } from "../components/episode-workspace";
 import { JobPanel } from "../components/job-panel";
 import { PageError, PageLoading } from "../components/page-state";
 import { normalizeKind } from "../types";
 import { useProject, type ProjectSnapshot } from "../use-project";
 
 export function SeriesProjectPage({ initial }: { initial?: ProjectSnapshot }) {
-  const { projectId, episodeIndex } = useParams();
-  const { project, job, loading, busy, error, startJob } = useProject(projectId, initial);
+  const { projectId, episodeIndex, view } = useParams();
+  const navigate = useNavigate();
+  const { project, job, loading, busy, error, startJob, reload } = useProject(projectId, initial);
+  const [adding, setAdding] = useState(false);
+  const [newTitle, setNewTitle] = useState("");
+  const [newDescription, setNewDescription] = useState("");
 
   if (loading) return <PageLoading />;
   if (error && !project) return <PageError message={error} />;
@@ -30,6 +38,24 @@ export function SeriesProjectPage({ initial }: { initial?: ProjectSnapshot }) {
 
   const result = project.last_series;
   const rawEpisodes = result?.episodes ?? [];
+  const selectedIndex = episodeIndex === undefined ? null : Number(episodeIndex);
+
+  // A selected episode runs the full Story workflow (script -> characters -> scenes -> assemble).
+  if (projectId && selectedIndex !== null && Number.isInteger(selectedIndex) && rawEpisodes[selectedIndex]) {
+    return (
+      <EpisodeWorkspace
+        project={project}
+        projectId={projectId}
+        index={selectedIndex}
+        view={view}
+        job={job}
+        busy={busy}
+        startJob={startJob}
+        reload={reload}
+      />
+    );
+  }
+
   const episodes: SeriesEpisode[] = rawEpisodes.map((episode, index) => ({
     id: String(index),
     title: episode.title || `Episode ${index + 1}`,
@@ -42,33 +68,18 @@ export function SeriesProjectPage({ initial }: { initial?: ProjectSnapshot }) {
           ? "failed"
           : "draft",
   }));
-  const selectedIndex = episodeIndex === undefined ? null : Number(episodeIndex);
-  const selected = selectedIndex !== null && Number.isInteger(selectedIndex) ? episodes[selectedIndex] : undefined;
-  const selectedRender = selectedIndex === null ? undefined : project.episode_renders?.[String(selectedIndex)]?.render;
-  const selectedUrl = fileUrl(selectedRender?.file);
   const brief = project.series_brief ?? {};
 
-  const episodeList = (
-    <SeriesEpisodeList
-      episodes={episodes}
-      description="Open an episode to generate or download its finished video."
-      renderLink={(episode, children) => (
-        <Link className="block min-w-0" to={`/series/${projectId}/episodes/${episode.id}`}>
-          {children}
-        </Link>
-      )}
-      renderActions={(episode) => (
-        <Button
-          size="sm"
-          variant="outline"
-          disabled={busy}
-          onClick={() => void startJob(`/api/projects/${projectId}/series/episodes/${episode.id}/render`)}
-        >
-          <Sparkles /> <span className="hidden sm:inline">Generate</span>
-        </Button>
-      )}
-    />
-  );
+  async function addEpisode() {
+    const title = newTitle.trim();
+    if (!title) return;
+    const res = await api<{ index: number }>(`/api/projects/${projectId}/series/episodes`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ title, description: newDescription.trim() }),
+    });
+    navigate(`/series/${projectId}/episodes/${res.index}/story`);
+  }
 
   return (
     <SeriesWorkspaceLayout
@@ -83,57 +94,64 @@ export function SeriesProjectPage({ initial }: { initial?: ProjectSnapshot }) {
       headerActions={
         <>
           <Badge variant="outline">{episodes.length} episodes</Badge>
+          <Button variant="outline" size="sm" disabled={busy} onClick={() => setAdding((open) => !open)}>
+            <Plus /> New episode
+          </Button>
           <Button variant="outline" size="sm" disabled={busy} onClick={() => void startJob(`/api/projects/${projectId}/series`, brief)}>
             <RefreshCw /> Replan
           </Button>
         </>
       }
       episodes={
-        <div className="grid gap-5">
+        <div className="flex flex-col gap-5">
           {job ? <JobPanel job={job} /> : null}
           {error ? <StatusMessage tone="danger">{error}</StatusMessage> : null}
           {result?.error ? <StatusMessage tone="danger" title="Series planning failed">{result.error}</StatusMessage> : null}
-          {selected ? (
+          {adding ? (
             <Card className="gap-0 py-0">
-              <CardContent className="grid gap-4 p-4">
-                <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
-                  <div>
-                    <p className="text-xs font-semibold text-muted-foreground">EPISODE {selectedIndex! + 1}</p>
-                    <h2 className="mt-1 text-lg font-semibold">{selected.title}</h2>
-                    {selected.description ? <p className="mt-1 text-sm leading-relaxed text-muted-foreground">{selected.description}</p> : null}
-                  </div>
-                  <Button asChild size="sm" variant="ghost"><Link to={`/series/${projectId}/episodes`}>Close</Link></Button>
-                </div>
-                <MediaCanvas
-                  src={selectedUrl ?? undefined}
-                  title={selected.title}
-                  aspect="portrait"
-                  emptyTitle={selected.status === "generating" ? "Generating this episode" : "Episode not generated yet"}
-                  emptyDescription={selected.status === "generating" ? "Writing, scene generation, narration, and assembly continue locally." : "Generate this episode when you are happy with the plan."}
-                />
-                <div className="flex flex-wrap justify-end gap-2">
-                  {selectedUrl ? <Button asChild variant="outline"><a href={selectedUrl} download><Download /> Download</a></Button> : null}
-                  <Button disabled={busy} onClick={() => void startJob(`/api/projects/${projectId}/series/episodes/${selected.id}/render`)}>
-                    <Sparkles /> {selectedUrl ? "Generate again" : "Generate episode"}
+              <CardContent className="flex flex-col gap-3 p-4">
+                <Field>
+                  <FieldLabel htmlFor="ep-title">Title</FieldLabel>
+                  <Input id="ep-title" value={newTitle} onChange={(event) => setNewTitle(event.target.value)} placeholder="Episode title" />
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor="ep-desc">Premise</FieldLabel>
+                  <Input id="ep-desc" value={newDescription} onChange={(event) => setNewDescription(event.target.value)} placeholder="What happens in this episode" />
+                </Field>
+                <div className="flex justify-end gap-2">
+                  <Button variant="ghost" size="sm" onClick={() => setAdding(false)}>Cancel</Button>
+                  <Button size="sm" disabled={!newTitle.trim()} onClick={() => void addEpisode()}>
+                    <Plus /> Add episode
                   </Button>
                 </div>
               </CardContent>
             </Card>
           ) : null}
-          {episodeList}
+          <SeriesEpisodeList
+            episodes={episodes}
+            description="Open an episode to write its script, review scenes, then generate the video."
+            renderLink={(episode, children) => (
+              <Link className="block min-w-0" to={`/series/${projectId}/episodes/${episode.id}`}>
+                {children}
+              </Link>
+            )}
+          />
         </div>
       }
       aside={
         <Card className="gap-0 py-0">
-          <CardContent className="grid gap-3 p-4">
+          <CardContent className="flex flex-col gap-3 p-4">
             <div>
               <p className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">Series defaults</p>
               <p className="mt-2 text-sm font-medium">{String(brief.style || "Default visual style")}</p>
             </div>
-            <dl className="grid gap-2 text-xs">
+            <dl className="flex flex-col gap-2 text-xs">
+              <div className="flex justify-between gap-3"><dt className="text-muted-foreground">Episodes</dt><dd>{episodes.length}</dd></div>
               <div className="flex justify-between gap-3"><dt className="text-muted-foreground">Aspect</dt><dd>{String(brief.aspect_ratio || "9:16")}</dd></div>
               <div className="flex justify-between gap-3"><dt className="text-muted-foreground">Language</dt><dd>{String(brief.language || "Auto")}</dd></div>
               <div className="flex justify-between gap-3"><dt className="text-muted-foreground">Render</dt><dd>{String(brief.engine || "storyboard")}</dd></div>
+              {brief.resolution ? <div className="flex justify-between gap-3"><dt className="text-muted-foreground">Resolution</dt><dd>{String(brief.resolution)}</dd></div> : null}
+              <div className="flex justify-between gap-3"><dt className="text-muted-foreground">Mature</dt><dd>{brief.mature ? "Yes" : "No"}</dd></div>
             </dl>
             <StatusMessage title="Community catalog">Episode ideas use the synced public definitions and your local provider keys.</StatusMessage>
           </CardContent>

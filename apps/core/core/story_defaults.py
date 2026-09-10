@@ -32,9 +32,14 @@ narration. Keep the characters and the visual style consistent across every scen
 CONTRACT = """Return ONLY a JSON object with this exact shape and nothing else:
 {"logline": "one sentence describing the whole story", "style": "one sentence describing the shared visual style for every scene", "characters": [{"name": "character name", "description": "look and personality"}], "scenes": [{"prompt": "a vivid visual description of the shot", "narration": "the spoken line for this scene", "motion": false}]}
 Include exactly $scene_count objects in "scenes", in order. Every scene MUST have non-empty
-"narration". Do not add keys and do not wrap the JSON in markdown."""
+"narration". The "prompt", "style", and character "description" fields MUST always be written
+in English (image models only understand English); only "narration" uses the story's language.
+Do not add keys and do not wrap the JSON in markdown."""
 
-LANGUAGE = "Write the $subject in $language."
+LANGUAGE = (
+    "Write all spoken 'narration' in $language. Always write the image 'prompt', 'style', and "
+    "character 'description' fields in English regardless of the narration language."
+)
 
 EPISODE_PLAN = """Plan $count episodes for a $format series.
 

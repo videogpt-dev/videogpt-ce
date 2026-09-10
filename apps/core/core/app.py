@@ -258,7 +258,8 @@ async def plan_project_series(project_id: str, options: dict | None = None) -> d
     return {"job_id": job["id"]}
 
 
-async def _render_episode(project: dict, index: int, rep: jobs.Reporter) -> dict:
+async def _episode_story(project: dict, index: int, rep: jobs.Reporter) -> dict:
+    """Write and store an episode's script (scenes) so it can be reviewed before rendering."""
     episode = ((project.get("last_series") or {}).get("episodes") or [])[index]
     episode_pid = f"{project['id']}-ep{index}"
     options = {
@@ -269,10 +270,32 @@ async def _render_episode(project: dict, index: int, rep: jobs.Reporter) -> dict
     rep.phase(f"episode {index + 1}: writing script")
     write_req = engine.build_story_request(episode_pid, episode.get("title") or "", options)
     written = await engine.run_story(write_req)
-    story = (written.get("result") or {}).get("story")
+    res = written.get("result") or {}
+    story = res.get("story")
     if not story:
-        error = (written.get("result") or {}).get("error") or "story write failed"
-        return {"ok": False, "error": error}
+        return {"_error": res.get("error") or "story write failed"}
+    project.setdefault("episode_stories", {})[str(index)] = story
+    store.save_project(project)
+    return story
+
+
+async def _write_episode(project: dict, index: int, rep: jobs.Reporter) -> dict:
+    story = await _episode_story(project, index, rep)
+    if story.get("_error"):
+        return {"ok": False, "error": story["_error"]}
+    rep.phase(f"{len(story.get('scenes', []))} scenes")
+    return {"ok": True}
+
+
+async def _render_episode(project: dict, index: int, rep: jobs.Reporter) -> dict:
+    episode = ((project.get("last_series") or {}).get("episodes") or [])[index]
+    episode_pid = f"{project['id']}-ep{index}"
+    # Reuse the reviewed script if it was written; otherwise write it now (one-shot fallback).
+    story = (project.get("episode_stories") or {}).get(str(index))
+    if not story:
+        story = await _episode_story(project, index, rep)
+        if story.get("_error"):
+            return {"ok": False, "error": story["_error"]}
     rendered = await story_pipeline.render_story(episode_pid, story, report=rep)
     renders = project.setdefault("episode_renders", {})
     renders[str(index)] = {"title": episode.get("title"), "render": rendered}
@@ -280,18 +303,63 @@ async def _render_episode(project: dict, index: int, rep: jobs.Reporter) -> dict
     return rendered
 
 
-@app.post("/api/projects/{project_id}/series/episodes/{index}/render")
-async def render_series_episode(project_id: str, index: int) -> dict:
+def _episode_or_404(project_id: str, index: int) -> dict:
     project = store.get_project(project_id)
     if project is None:
         raise HTTPException(status_code=404, detail="project not found")
     episodes = (project.get("last_series") or {}).get("episodes") or []
     if index < 0 or index >= len(episodes):
         raise HTTPException(status_code=404, detail="episode not found")
+    return project
+
+
+@app.post("/api/projects/{project_id}/series/episodes/{index}/write")
+async def write_series_episode(project_id: str, index: int) -> dict:
+    project = _episode_or_404(project_id, index)
+    job = jobs.start(
+        project_id, f"episode-write:{index}", lambda rep: _write_episode(project, index, rep)
+    )
+    return {"job_id": job["id"]}
+
+
+@app.post("/api/projects/{project_id}/series/episodes/{index}/render")
+async def render_series_episode(project_id: str, index: int) -> dict:
+    project = _episode_or_404(project_id, index)
     job = jobs.start(
         project_id, f"episode:{index}", lambda rep: _render_episode(project, index, rep)
     )
     return {"job_id": job["id"]}
+
+
+@app.post("/api/projects/{project_id}/series/episodes/{index}/style")
+def set_episode_style(project_id: str, index: int, body: dict | None = None) -> dict:
+    """Edit an episode's visual style; it leads every scene's image prompt on the next render."""
+    project = _episode_or_404(project_id, index)
+    story = (project.get("episode_stories") or {}).get(str(index))
+    if not isinstance(story, dict):
+        raise HTTPException(status_code=409, detail="write the episode script first")
+    story["style"] = str((body or {}).get("style") or "").strip()
+    store.save_project(project)
+    return {"ok": True}
+
+
+@app.post("/api/projects/{project_id}/series/episodes")
+def add_series_episode(project_id: str, body: dict | None = None) -> dict:
+    """Append a hand-written episode to the series plan; its script is written on demand."""
+    project = store.get_project(project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="project not found")
+    data = body or {}
+    series = project.setdefault("last_series", {"ok": True, "episodes": []})
+    episodes = series.setdefault("episodes", [])
+    episodes.append(
+        {
+            "title": (str(data.get("title") or "").strip() or f"Episode {len(episodes) + 1}"),
+            "description": str(data.get("description") or "").strip(),
+        }
+    )
+    store.save_project(project)
+    return {"ok": True, "index": len(episodes) - 1}
 
 
 @app.get("/api/jobs/{job_id}")
