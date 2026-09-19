@@ -13,15 +13,14 @@ _DEFAULT_VOICE = "en-US-AriaNeural"
 _TICKS_PER_SECOND = 1e7
 
 # Non-Latin scripts an English voice cannot speak, with one example Edge voice to suggest. Only
-# for a clearer error message — not a config list the pipeline selects from.
+# for a clearer error message, not a config list the pipeline selects from.
 _SCRIPTS: tuple[tuple[int, int, str, str], ...] = (
     (0x0900, 0x097F, "Hindi", "hi-IN-SwaraNeural"),
     (0x0600, 0x06FF, "Arabic", "ar-EG-SalmaNeural"),
     (0x0400, 0x04FF, "Russian", "ru-RU-SvetlanaNeural"),
     (0x3040, 0x30FF, "Japanese", "ja-JP-NanamiNeural"),
     (0xAC00, 0xD7A3, "Korean", "ko-KR-SunHiNeural"),
-    (0x4E00, 0x9FFF, "Chinese", "zh-CN-XiaoxiaoNeural"),
-)
+    (0x4E00, 0x9FFF, "Chinese", "zh-CN-XiaoxiaoNeural"))
 
 
 def _language_hint(text: str) -> str:
@@ -46,7 +45,7 @@ async def _synthesize(text: str, voice: str) -> tuple[bytes, list[dict]]:
 
     # Edge hits Microsoft's online endpoint, which intermittently returns no audio for valid
     # text, so retry before giving up. Persistent failure is almost always a real voice/language
-    # mismatch (e.g. an en-US voice on Hindi text) — surfaced with a clear, actionable message.
+    # mismatch (e.g. an en-US voice on Hindi text), surfaced with a clear, actionable message.
     for attempt in range(_MAX_ATTEMPTS):
         audio = bytearray()
         words: list[dict] = []
@@ -88,5 +87,4 @@ class EdgeSpeech(Adapter):
             type="b64",
             value=base64.b64encode(audio).decode("ascii"),
             mime="audio/mpeg",
-            meta={"words": words, "duration": duration},
-        )
+            meta={"words": words, "duration": duration})

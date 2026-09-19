@@ -1,7 +1,6 @@
 """fal music. Ported from the full gateway's FalMusic.
 
-Music models disagree on the duration key (duration vs seconds_total), so both are sent —
-the model reads whichever it expects. Returns the asset URL.
+Music models disagree on the duration key (duration vs seconds_total), so both are sent, the model reads whichever it expects. Returns the asset URL.
 """
 
 from __future__ import annotations
