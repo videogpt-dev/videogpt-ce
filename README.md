@@ -5,15 +5,14 @@
 <h1 align="center">videogpt · Community Edition</h1>
 
 <p align="center">
-  Your own video studio, self-hosted.<br>
+  Videogpt, self-hosted version<br>
   Cut short clips out of long videos, and generate new videos from a prompt.
 </p>
 
 ---
 
-This is the self-host edition of [videogpt.dev](https://videogpt.dev). It runs the same engine
-the cloud product uses, wired to a tiny local inference gateway, so everything happens on your
-box. The engine has three parts:
+This is the self-host edition of [videogpt.dev](https://videogpt.dev). It runs the same open-source
+engine the cloud product uses, so everything happens on your box. The engine has three parts:
 
 - **Clips.** Feed it a long video (a file or a URL), get back short vertical clips with
   burned-in captions.
@@ -21,21 +20,10 @@ box. The engine has three parts:
   scene image and narration each, assembled into one mp4.
 - **Series.** Plan connected episodes for a recurring show from a premise and a cast.
 
-The paid cloud edition adds accounts, publishing to YouTube/TikTok/Instagram, a managed
-inference roster, and storage. None of that is here, and none of it is needed to run the
-engine yourself.
-
-## Status
-
-Clips is wired end to end and works today, keyless. Story writes a scene-by-scene script and
-then renders a finished mp4: a generated image per scene plus narration, assembled by the
-editor service. It needs `OPENROUTER_API_KEY` (script) and `FAL_KEY` (scene images); narration
-runs on a keyless local voice. Series proposes an episode slate, then generates a full video
-for any episode the same way Story does. All three produce a finished mp4 you can download.
 
 ## What you get
 
-- **Clips** from any long video: upload a file, or paste a URL (YouTube and anything else
+- **Clips** from long video: upload a file, or paste a URL (YouTube and anything else
   yt-dlp handles).
 - **Runs keyless.** Transcription is local (faster-whisper), moment selection runs offline,
   render is ffmpeg. No API key required to make a clip.
@@ -54,17 +42,12 @@ cp .env.example .env          # optional: add provider keys for the AI features
 docker compose up --build
 ```
 
-Then open:
+Once ready, then open Dashboard: http://localhost:5173
 
-- Dashboard: http://localhost:5173
-- Core API: http://localhost:8000
-
-The first clip run downloads the whisper model into a named volume, so it is slow once and
+The first clip run downloads the whisper model into a named volume, so it might be slow once and
 fast after. Output and the model cache survive `docker compose down`.
 
 ## How it fits together
-
-Five containers on a private network; only the dashboard and core are published.
 
 | Path | Where it lives | Job |
 |---|---|---|
