@@ -38,6 +38,23 @@ def list_for_project(project_id: str) -> list[dict[str, Any]]:
     return out
 
 
+def sweep_orphans() -> int:
+    """Mark jobs left `running` by a prior process (crash or restart) as failed. Their in-memory
+    task is gone, so they would otherwise poll forever."""
+    swept = 0
+    for f in _dir().glob("*.json"):
+        job = json.loads(f.read_text())
+        if job.get("status") != "running":
+            continue
+        job["status"] = "error"
+        job["error"] = "interrupted (server restarted)"
+        job["phase"] = "failed"
+        job["finished_at"] = time.time()
+        f.write_text(json.dumps(job))
+        swept += 1
+    return swept
+
+
 class Reporter:
     def __init__(self, job: dict[str, Any]) -> None:
         self._job = job

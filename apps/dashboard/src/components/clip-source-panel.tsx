@@ -44,7 +44,7 @@ export function ClipSourcePanel({
         </p>
       </div>
 
-      {project.source ? (
+      {project.source || project.source_url ? (
         <div className="flex flex-col gap-3 rounded-xl border bg-muted/35 p-4 sm:flex-row sm:items-center">
           <span className="grid size-11 shrink-0 place-items-center rounded-lg bg-vui-success/10 text-vui-success">
             <FileVideo className="size-5" />
@@ -59,6 +59,12 @@ export function ClipSourcePanel({
             <Button asChild size="sm" variant="outline">
               <a href={source} target="_blank" rel="noreferrer">
                 Preview
+              </a>
+            </Button>
+          ) : project.source_url ? (
+            <Button asChild size="sm" variant="outline">
+              <a href={project.source_url} target="_blank" rel="noreferrer">
+                Open
               </a>
             </Button>
           ) : null}
@@ -124,12 +130,12 @@ export function ClipSourcePanel({
           disabled={busy || !url.trim()}
           onClick={() => onFetch(url.trim())}
         >
-          <Video /> {busy && !uploading ? "Fetching..." : "Fetch video"}
+          <Video /> {busy && !uploading ? "Saving..." : "Use URL"}
         </Button>
       </div>
       <p className="text-xs leading-relaxed text-muted-foreground">
-        YouTube and other sites supported by yt-dlp work here. The downloaded source stays in your
-        local data volume.
+        YouTube and other sites supported by yt-dlp work here. The video is not downloaded: clips
+        are found from the audio, then only the chosen moments are fetched to render.
       </p>
       {error ? (
         <StatusMessage tone="danger" title="Could not add this source">

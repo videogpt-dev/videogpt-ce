@@ -10,6 +10,7 @@ import {
   type ClipStepSlug,
 } from "@videogpt/ui";
 
+import { ClipMomentsReview } from "../components/clip-moments-review";
 import { ClipResultGallery } from "../components/clip-result-gallery";
 import { ClipSourcePanel } from "../components/clip-source-panel";
 import { JobPanel } from "../components/job-panel";
@@ -40,7 +41,9 @@ const DEFAULT_DRAFT: ClipDraft = {
   whisper: "base",
   minInterest: 0.3,
   captions: true,
-  provider: "openrouter",
+  momentFinder: "offline",
+  momentProvider: "",
+  momentModel: "",
 };
 
 function readDraft(form: HTMLFormElement, previous: ClipDraft, hasFile: boolean): ClipDraft {
@@ -55,7 +58,9 @@ function readDraft(form: HTMLFormElement, previous: ClipDraft, hasFile: boolean)
     whisper: String(data.get("whisper_model") || previous.whisper),
     minInterest: Number(data.get("min_interest") ?? previous.minInterest),
     captions: data.has("captions"),
-    provider: String(data.get("ai") || previous.provider),
+    momentFinder: String(data.get("moment_finder") || previous.momentFinder),
+    momentProvider: String(data.get("moment_provider") || previous.momentProvider),
+    momentModel: String(data.get("moment_model") ?? previous.momentModel),
   };
 }
 
@@ -64,7 +69,8 @@ export function ClipProjectPage({ initial }: { initial?: ProjectSnapshot }) {
   const navigate = useNavigate();
   const { providers, segment } = useStudio();
   const definition = segment("clips");
-  const { project, job, loading, uploading, busy, error, startJob, upload } = useProject(projectId, initial);
+  const { project, job, loading, uploading, busy, error, startJob, upload, fetchUrl, renderClips } =
+    useProject(projectId, initial);
   const [draft, setDraft] = useState(DEFAULT_DRAFT);
   const [formError, setFormError] = useState<string | null>(null);
   const [sourceKind, setSourceKind] = useState<ClipSourceKind>("url");
@@ -75,18 +81,14 @@ export function ClipProjectPage({ initial }: { initial?: ProjectSnapshot }) {
     const available = Array.from(
       new Set(
         providers
-          .filter((item) => item.kind === "text")
-          .map((item) => item.provider.trim())
-          .filter(Boolean),
+          .filter((item) => item.kind === "text" && item.provider?.trim())
+          .map((item) => item.provider.trim()),
       ),
-    );
+    ).map((provider) => ({ value: provider, label: provider }));
     if (!available.length) {
-      return [{ value: "unavailable", label: "No AI provider available", disabled: true }];
+      return [{ value: "", label: "No AI provider available", disabled: true }];
     }
-    return available.map((provider) => ({
-      value: provider,
-      label: provider === "openrouter" ? "OpenRouter" : provider.charAt(0).toUpperCase() + provider.slice(1),
-    }));
+    return available;
   }, [providers]);
 
   useEffect(() => {
@@ -104,30 +106,43 @@ export function ClipProjectPage({ initial }: { initial?: ProjectSnapshot }) {
       whisper: String(options.whisper_model || DEFAULT_DRAFT.whisper),
       minInterest: Number(options.min_interest_score ?? DEFAULT_DRAFT.minInterest),
       captions: options.generate_captions === undefined ? DEFAULT_DRAFT.captions : Boolean(options.generate_captions),
-      provider: String(options.ai_provider || DEFAULT_DRAFT.provider),
+      momentFinder: String(options.moment_finder || DEFAULT_DRAFT.momentFinder),
+      momentProvider: String(options.moment_provider || DEFAULT_DRAFT.momentProvider),
+      momentModel: String(options.moment_model || DEFAULT_DRAFT.momentModel),
     });
     setSourceKind(project.source_url ? "url" : "file");
     hydratedRef.current = project.id;
   }, [project]);
 
   const artifacts = project?.last_result?.artifacts ?? [];
-  const furthest = project?.last_result || job?.kind === "clips" ? 2 : project?.source ? 1 : 0;
+  const moments = project?.moments ?? [];
+  const hasSource = Boolean(project?.source || project?.source_url);
+  const furthest =
+    project?.last_result || moments.length || job?.kind === "clips" ? 2 : hasSource ? 1 : 0;
   const resultError = project?.last_result?.error;
 
   const after = useMemo(
     () =>
       step === "generate" ? (
         <div className="mt-5 grid gap-4">
-          {job ? <JobPanel job={job} /> : null}
+          {job?.status === "running" ? <JobPanel job={job} /> : null}
           {resultError ? <StatusMessage tone="danger" title="Clip generation failed">{resultError}</StatusMessage> : null}
-          {!busy ? <ClipResultGallery artifacts={artifacts} /> : null}
+          {!busy && project && moments.length ? (
+            <ClipMomentsReview
+              project={project}
+              moments={moments}
+              busy={busy}
+              onRender={(indices) => void renderClips(indices)}
+            />
+          ) : null}
+          {!busy && artifacts.length ? <ClipResultGallery artifacts={artifacts} /> : null}
         </div>
       ) : step === "source" && job?.kind === "url" ? (
         <div className="mt-5"><JobPanel job={job} /></div>
       ) : job?.status === "running" ? (
         <div className="mt-5"><JobPanel job={job} /></div>
       ) : null,
-    [artifacts, busy, job, resultError, step],
+    [artifacts, busy, job, moments, project, renderClips, resultError, step],
   );
 
   if (loading) return <PageLoading />;
@@ -143,11 +158,18 @@ export function ClipProjectPage({ initial }: { initial?: ProjectSnapshot }) {
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!project?.source) return;
+    if (!hasSource) return;
     const next = readDraft(event.currentTarget, draft, true);
     setDraft(next);
     if (next.minLength >= next.maxLength) {
       setFormError("Min length must be less than max length.");
+      return;
+    }
+    setFormError(null);
+    const momentProvider = next.momentProvider.trim();
+    const momentModel = next.momentModel.trim();
+    if (next.momentFinder === "ai" && (!momentProvider || !momentModel)) {
+      setFormError("Pick an AI provider and enter a model id, or switch the finder to Offline.");
       return;
     }
     setFormError(null);
@@ -160,7 +182,9 @@ export function ClipProjectPage({ initial }: { initial?: ProjectSnapshot }) {
       whisper_model: next.whisper,
       min_interest_score: next.minInterest,
       generate_captions: next.captions,
-      ai_provider: next.provider,
+      moment_finder: next.momentFinder,
+      moment_provider: momentProvider,
+      moment_model: momentModel,
     });
   }
 
@@ -189,10 +213,13 @@ export function ClipProjectPage({ initial }: { initial?: ProjectSnapshot }) {
         minInterest={draft.minInterest}
         providerOptions={providerOptions}
         submitting={busy && job?.kind === "clips"}
-        submitDisabled={!project.source || busy}
-        blocker={step === "source" && !project.source ? "Add a source video before continuing." : undefined}
+        submitDisabled={!hasSource || busy}
+        blocker={step === "source" && !hasSource ? "Add a source video or URL before continuing." : undefined}
         error={formError || error}
-        copy={{ submit: artifacts.length ? "Run again" : "Find moments", submitting: "Finding moments..." }}
+        copy={{
+          submit: moments.length || artifacts.length ? "Find again" : "Find moments",
+          submitting: "Finding moments...",
+        }}
         classNames={{ root: "max-w-4xl" }}
         slots={{
           source: (
@@ -202,7 +229,11 @@ export function ClipProjectPage({ initial }: { initial?: ProjectSnapshot }) {
               busy={busy}
               error={error}
               onUpload={(file) => void upload(file)}
-              onFetch={(url) => void startJob(`/api/projects/${projectId}/source-url`, { url })}
+              onFetch={(url) => {
+                void fetchUrl(url).then((ok) => {
+                  if (ok) navigate(`/clips/${projectId}/settings`);
+                });
+              }}
             />
           ),
           after,
