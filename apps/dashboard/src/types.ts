@@ -15,6 +15,15 @@ export type Artifact = {
   meta?: Record<string, unknown>;
 };
 
+export type Moment = {
+  start: number;
+  end: number;
+  duration?: number;
+  text?: string;
+  score?: number;
+  language?: string;
+};
+
 export type Scene = {
   prompt: string;
   narration: string;
@@ -58,6 +67,7 @@ export type Project = {
   source?: string;
   source_url?: string;
   clip_options?: Record<string, unknown>;
+  moments?: Moment[];
   story_brief?: Record<string, unknown>;
   series_brief?: Record<string, unknown>;
   last_result?: {
@@ -95,7 +105,13 @@ export function normalizeKind(kind: string): ProjectKind {
 export function projectPath(project: Project): string {
   const kind = normalizeKind(project.kind);
   if (kind === "clips") {
-    const view = project.last_result ? "results" : project.source ? "settings" : "source";
+    const hasSource = project.source || project.source_url;
+    const view =
+      project.last_result || project.moments?.length
+        ? "results"
+        : hasSource
+          ? "settings"
+          : "source";
     return `/clips/${project.id}/${view}`;
   }
   if (kind === "story") {

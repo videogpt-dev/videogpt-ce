@@ -21,7 +21,7 @@ export function useProject(projectId?: string, initial?: ProjectSnapshot) {
 
   const stopPolling = useCallback(() => {
     if (pollRef.current !== null) {
-      window.clearInterval(pollRef.current);
+      window.clearTimeout(pollRef.current);
       pollRef.current = null;
     }
   }, []);
@@ -40,6 +40,12 @@ export function useProject(projectId?: string, initial?: ProjectSnapshot) {
   const watch = useCallback(
     (jobId: string) => {
       stopPolling();
+      // Poll with backoff: quick first checks, then ease off so a long find/render pass
+      // is not hammered every second. Each poll is scheduled only after the previous
+      // response, so slow requests never stack up.
+      const MIN_DELAY = 2000;
+      const MAX_DELAY = 8000;
+      let delay = MIN_DELAY;
       const tick = async () => {
         try {
           const next = await api<Job>(`/api/jobs/${jobId}`);
@@ -47,14 +53,16 @@ export function useProject(projectId?: string, initial?: ProjectSnapshot) {
           if (next.status !== "running") {
             stopPolling();
             await finishJob();
+            return;
           }
+          pollRef.current = window.setTimeout(() => void tick(), delay);
+          delay = Math.min(delay * 1.5, MAX_DELAY);
         } catch (nextError) {
           stopPolling();
           setError(nextError instanceof Error ? nextError.message : "Could not read job status.");
         }
       };
       void tick();
-      pollRef.current = window.setInterval(() => void tick(), 1000);
     },
     [finishJob, stopPolling],
   );
@@ -107,6 +115,14 @@ export function useProject(projectId?: string, initial?: ProjectSnapshot) {
     [watch],
   );
 
+  const renderClips = useCallback(
+    async (indices: number[]) => {
+      if (!projectId) return null;
+      return startJob(`/api/projects/${projectId}/clips/render`, { indices });
+    },
+    [projectId, startJob],
+  );
+
   const upload = useCallback(
     async (file: File) => {
       if (!projectId) return false;
@@ -128,6 +144,28 @@ export function useProject(projectId?: string, initial?: ProjectSnapshot) {
     [finishJob, projectId],
   );
 
+  const fetchUrl = useCallback(
+    async (url: string) => {
+      if (!projectId) return false;
+      setError(null);
+      try {
+        // Source-light: this just records the URL (no download). Reload so the project shows
+        // it as the source and the step can advance.
+        await api(`/api/projects/${projectId}/source-url`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ url }),
+        });
+        await finishJob();
+        return true;
+      } catch (nextError) {
+        setError(nextError instanceof Error ? nextError.message : "Could not add this URL.");
+        return false;
+      }
+    },
+    [finishJob, projectId],
+  );
+
   return {
     project,
     job,
@@ -138,6 +176,8 @@ export function useProject(projectId?: string, initial?: ProjectSnapshot) {
     reload: load,
     startJob,
     upload,
+    fetchUrl,
+    renderClips,
     clearError: () => setError(null),
   };
 }

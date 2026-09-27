@@ -17,7 +17,23 @@ def _empty_definitions() -> dict[str, Any]:
     }
 
 
-def build_clips_request(project_id: str, video_rel: str, options: dict[str, Any]) -> dict[str, Any]:
+def build_clips_request(
+    project_id: str,
+    video_rel: str | None,
+    options: dict[str, Any],
+    *,
+    audio_path: str | None = None,
+    preset_moments: list[dict[str, Any]] | None = None,
+    pretranscript: list[dict[str, Any]] | None = None,
+    analyze_only: bool | None = None,
+) -> dict[str, Any]:
+    """A kinoforge clips request. Source-light adds three optional inputs:
+
+    - `audio_path`: run the find stages on audio alone (no video). Used with analyze_only.
+    - `analyze_only`: find and return moments, render nothing.
+    - `preset_moments` + `pretranscript`: skip discovery and render exactly these moments from
+      `video_rel` (a fetched segment), captioning them from the sliced transcript.
+    """
     opts = {
         "clip_count": int(options.get("clip_count", 10)),
         "min_length": float(options.get("min_length", 20)),
@@ -26,11 +42,22 @@ def build_clips_request(project_id: str, video_rel: str, options: dict[str, Any]
         "quality": options.get("quality", "high"),
         "generate_captions": bool(options.get("generate_captions", True)),
         "subtitle_font_size": int(options.get("subtitle_font_size", 14)),
-        "analyze_only": bool(options.get("analyze_only", False)),
+        "analyze_only": bool(options.get("analyze_only", False))
+        if analyze_only is None
+        else analyze_only,
         "min_interest_score": float(options.get("min_interest_score", 0.3)),
         "moment_route": {},
     }
-    config = {
+    # Moment finder: "ai" routes discovery through a text model (via infrelay), "offline"
+    # (default) uses the on-box energy/transcript heuristics. AI needs a provider + model.
+    moment_route: dict[str, Any] = {}
+    if str(options.get("moment_finder") or "offline") == "ai":
+        provider = str(options.get("moment_provider") or "").strip()
+        model = str(options.get("moment_model") or "").strip()
+        if provider and model:
+            moment_route = {"provider": provider, "model": model}
+    context_window = int(options.get("context_window") or 1_000_000)
+    config: dict[str, Any] = {
         "transcription": {
             "model": options.get("whisper_model") or "base",
             "device": "cpu",
@@ -38,7 +65,8 @@ def build_clips_request(project_id: str, video_rel: str, options: dict[str, Any]
         },
         "scoring": {},
         "limits": {},
-        "moment_route": {},
+        "moment_route": moment_route,
+        "context_window": context_window,
         "output_dir": str(settings.output_dir),
         "slug": project_id,
         "min_length": opts["min_length"],
@@ -55,14 +83,22 @@ def build_clips_request(project_id: str, video_rel: str, options: dict[str, Any]
             "subtitle_font_size": opts["subtitle_font_size"],
         },
     }
-    workspace = str(settings.output_dir / project_id)
-    video_abs = str(settings.output_dir / video_rel)
+    if preset_moments is not None:
+        config["preset_moments"] = preset_moments
+    if pretranscript is not None:
+        config["pretranscript"] = pretranscript
+
+    if audio_path:
+        input_block: dict[str, Any] = {"audio_path": str(audio_path)}
+    else:
+        input_block = {"video_path": str(settings.output_dir / (video_rel or ""))}
+
     return {
         "job_id": uuid.uuid4().hex,
         "project_id": project_id,
         "owner": "",
-        "workspace": workspace,
-        "input": {"video_path": video_abs},
+        "workspace": str(settings.output_dir / project_id),
+        "input": input_block,
         "options": opts,
         "config": config,
         "definitions": _empty_definitions(),
