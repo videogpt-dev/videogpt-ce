@@ -1,9 +1,15 @@
 import os
 import uuid
+from enum import StrEnum
 from typing import Any
 
 from core.config import settings
 from core import kinoforge, story_defaults
+
+
+class TranscriptSource(StrEnum):
+    AUTO = "auto"
+    WHISPER = "whisper"
 
 
 def _empty_definitions() -> dict[str, Any]:
@@ -38,7 +44,11 @@ def build_clips_request(
         "min_length": float(options.get("min_length", 20)),
         "max_length": float(options.get("max_length", 60)),
         "formats": options.get("formats") or ["9:16"],
-        "quality": options.get("quality", "high"),
+        "quality": options.get("quality") or "high",
+        "language": str(options.get("language") or "").strip() or None,
+        "whisper_model": options.get("whisper_model") or None,
+        "try_youtube_subs": TranscriptSource(options.get("transcript_source") or "auto")
+        is TranscriptSource.AUTO,
         "generate_captions": bool(options.get("generate_captions", True)),
         "subtitle_font_size": int(options.get("subtitle_font_size", 14)),
         "analyze_only": bool(options.get("analyze_only", False))

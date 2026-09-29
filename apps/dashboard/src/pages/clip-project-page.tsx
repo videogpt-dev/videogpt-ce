@@ -159,6 +159,7 @@ export function ClipProjectPage({ initial }: { initial?: ProjectSnapshot }) {
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!hasSource) return;
+    const data = new FormData(event.currentTarget);
     const next = readDraft(event.currentTarget, draft, true);
     setDraft(next);
     if (next.minLength >= next.maxLength) {
@@ -179,6 +180,9 @@ export function ClipProjectPage({ initial }: { initial?: ProjectSnapshot }) {
       min_length: next.minLength,
       max_length: next.maxLength,
       formats: next.formats.split(",").filter(Boolean),
+      quality: String(data.get("quality") || ""),
+      language: String(data.get("language") || "").trim(),
+      transcript_source: String(data.get("transcript_source") || ""),
       whisper_model: next.whisper,
       min_interest_score: next.minInterest,
       generate_captions: next.captions,
