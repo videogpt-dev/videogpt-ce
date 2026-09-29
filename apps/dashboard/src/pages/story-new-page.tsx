@@ -28,6 +28,7 @@ const DEFAULT_DRAFT: StoryDraft = {
   engine: "storyboard",
   agentId: "community",
   mature: false,
+  enhance: false,
 };
 
 // Visual-style presets. The value is the phrase appended to every scene's image prompt

@@ -1,10 +1,9 @@
+import os
 import uuid
 from typing import Any
 
-import httpx
-
 from core.config import settings
-from core import story_defaults
+from core import kinoforge, story_defaults
 
 
 def _empty_definitions() -> dict[str, Any]:
@@ -46,14 +45,17 @@ def build_clips_request(
         if analyze_only is None
         else analyze_only,
         "min_interest_score": float(options.get("min_interest_score", 0.3)),
-        "moment_route": {},
     }
-    # Moment finder: "ai" routes discovery through a text model (via infrelay), "offline"
-    # (default) uses the on-box energy/transcript heuristics. AI needs a provider + model.
+    # Moment finder: "ai" reads the transcript with an LLM (via infrelay), "offline" uses the
+    # on-box heuristics, "auto" (default) picks AI when a model is given. These belong in
+    # `config` (engine routing), never in `options`: kinoforge does not declare them on the
+    # options model, so config is the single home and the {**config, **options} merge cannot
+    # clobber them. Request wins; else fall back to .env (MOMENT_FINDER[_PROVIDER|_MODEL]).
+    moment_finder = str(options.get("moment_finder") or os.getenv("MOMENT_FINDER") or "auto")
     moment_route: dict[str, Any] = {}
-    if str(options.get("moment_finder") or "offline") == "ai":
-        provider = str(options.get("moment_provider") or "").strip()
-        model = str(options.get("moment_model") or "").strip()
+    if moment_finder != "offline":
+        provider = str(options.get("moment_provider") or os.getenv("MOMENT_FINDER_PROVIDER") or "").strip()
+        model = str(options.get("moment_model") or os.getenv("MOMENT_FINDER_MODEL") or "").strip()
         if provider and model:
             moment_route = {"provider": provider, "model": model}
     context_window = int(options.get("context_window") or 1_000_000)
@@ -65,6 +67,7 @@ def build_clips_request(
         },
         "scoring": {},
         "limits": {},
+        "moment_finder": moment_finder,
         "moment_route": moment_route,
         "context_window": context_window,
         "output_dir": str(settings.output_dir),
@@ -175,23 +178,5 @@ async def run_series(request: dict[str, Any]) -> dict[str, Any]:
 
 
 async def _post(path: str, request: dict[str, Any]) -> dict[str, Any]:
-    url = f"{settings.kinoforge_url}{path}"
-    headers = {"content-type": "application/json"}
-    async with httpx.AsyncClient(timeout=None) as client:
-        resp = await client.post(url, json=request, headers=headers)
-    if resp.is_error:
-        raise RuntimeError(f"kinoforge {resp.status_code}: {_error_detail(resp)}")
-    return resp.json()
-
-
-def _error_detail(resp: httpx.Response) -> str:
-    try:
-        detail = resp.json().get("detail")
-    except ValueError:
-        return resp.text.strip() or resp.reason_phrase
-    if isinstance(detail, list):
-        return "; ".join(
-            f"{'.'.join(str(p) for p in item.get('loc', [])[1:])}: {item.get('msg', '')}".strip(": ")
-            for item in detail
-        )
-    return str(detail) if detail else resp.reason_phrase
+    # All kinoforge calls go through the interceptor (stamps log_level, logs, error detail).
+    return await kinoforge.post(path, request)
