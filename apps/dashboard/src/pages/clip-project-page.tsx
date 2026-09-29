@@ -41,7 +41,7 @@ const DEFAULT_DRAFT: ClipDraft = {
   whisper: "base",
   minInterest: 0.3,
   captions: true,
-  momentFinder: "offline",
+  momentFinder: "auto",
   momentProvider: "",
   momentModel: "",
 };

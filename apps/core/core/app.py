@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from core import engine, jobs, store, story_pipeline
+from core import engine, jobs, kinoforge, store, story_pipeline
 from core.config import settings
 
 app = FastAPI(title="self-hosted-core")
@@ -568,17 +568,13 @@ def project_jobs(project_id: str) -> list[dict]:
 
 @app.api_route("/api/engine/{path:path}", methods=["GET", "POST"])
 async def engine_proxy(path: str, request: Request) -> Response:
-    url = f"{settings.kinoforge_url}/v1/{path}"
-    body = await request.body()
-    headers = {"content-type": request.headers.get("content-type", "application/json")}
-    async with httpx.AsyncClient(timeout=None) as client:
-        upstream = await client.request(
-            request.method,
-            url,
-            content=body,
-            params=request.query_params,
-            headers=headers,
-        )
+    upstream = await kinoforge.proxy(
+        request.method,
+        path,
+        content=await request.body(),
+        params=request.query_params,
+        headers={"content-type": request.headers.get("content-type", "application/json")},
+    )
     return Response(
         content=upstream.content,
         status_code=upstream.status_code,

@@ -25,6 +25,9 @@ services:
     environment:
       INFRELAY_URL: http://infrelay-lite:8090
       KINOFORGE_SHARED_ROOT: /data/output
+      # Console verbosity (per-request default). error is quiet; set debug or trace to see the
+      # full clips/story pipeline in `docker compose logs -f kinoforge`.
+      KINOFORGE_LOG_LEVEL: ${KINOFORGE_LOG_LEVEL:-debug}
     volumes:
       - data:/data
     expose:
@@ -57,6 +60,12 @@ services:
       EDITOR_URL: http://editor:3000
       CORE_DATA_DIR: /data
       KINOFORGE_SHARED_ROOT: /data/output
+      # Console verbosity core stamps on every kinoforge request (via the interceptor).
+      KINOFORGE_LOG_LEVEL: ${KINOFORGE_LOG_LEVEL:-debug}
+      # Clip moment-finder default when the UI does not choose one.
+      MOMENT_FINDER: ${MOMENT_FINDER:-auto}
+      MOMENT_FINDER_PROVIDER: ${MOMENT_FINDER_PROVIDER:-}
+      MOMENT_FINDER_MODEL: ${MOMENT_FINDER_MODEL:-}
       STORY_TEXT_PROVIDER: ${STORY_TEXT_PROVIDER:-openrouter}
       STORY_TEXT_MODEL: ${STORY_TEXT_MODEL:-openai/gpt-4o-mini}
       STORY_IMAGE_PROVIDER: ${STORY_IMAGE_PROVIDER:-fal}
