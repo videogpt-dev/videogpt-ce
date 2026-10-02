@@ -57,7 +57,7 @@ Include exactly $count items, in order. Do not wrap the JSON in markdown."""
 SCREENWRITER = {"persona": "", "stages": [{"role": "write", "format": "story_json", "temperature": 0.85}]}
 
 
-def _bundle(bundle_id: str, definitions: list[dict[str, Any]]) -> dict[str, Any]:
+def bundle(bundle_id: str, definitions: list[dict[str, Any]]) -> dict[str, Any]:
     encoded = json.dumps(
         definitions, ensure_ascii=False, sort_keys=True, separators=(",", ":")
     ).encode("utf-8")
@@ -72,7 +72,7 @@ def _bundle(bundle_id: str, definitions: list[dict[str, Any]]) -> dict[str, Any]
 
 
 def story_bundle() -> dict[str, Any]:
-    return _bundle(
+    return bundle(
         "self-hosted-story",
         [
             {"type": "agent", "key": "story_system", "body": STORY_SYSTEM},
@@ -84,7 +84,7 @@ def story_bundle() -> dict[str, Any]:
 
 
 def series_bundle() -> dict[str, Any]:
-    return _bundle(
+    return bundle(
         "self-hosted-series",
         [
             {"type": "agent", "key": "story_system", "body": STORY_SYSTEM},
