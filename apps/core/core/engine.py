@@ -4,22 +4,12 @@ from enum import StrEnum
 from typing import Any
 
 from core.config import settings
-from core import kinoforge, story_defaults
+from core import clips_defaults, kinoforge, story_defaults
 
 
 class TranscriptSource(StrEnum):
     AUTO = "auto"
     WHISPER = "whisper"
-
-
-def _empty_definitions() -> dict[str, Any]:
-    return {
-        "schema_version": 1,
-        "id": "self-hosted-offline",
-        "version": "sha256:offline",
-        "engine": {"minimum": "0.1.0"},
-        "definitions": [],
-    }
 
 
 def build_clips_request(
@@ -30,6 +20,7 @@ def build_clips_request(
     audio_path: str | None = None,
     preset_moments: list[dict[str, Any]] | None = None,
     pretranscript: list[dict[str, Any]] | None = None,
+    resume_transcript: list[dict[str, Any]] | None = None,
     analyze_only: bool | None = None,
 ) -> dict[str, Any]:
     """A kinoforge clips request. Source-light adds three optional inputs:
@@ -38,6 +29,10 @@ def build_clips_request(
     - `analyze_only`: find and return moments, render nothing.
     - `preset_moments` + `pretranscript`: skip discovery and render exactly these moments from
       `video_rel` (a fetched segment), captioning them from the sliced transcript.
+
+    `resume_transcript` rides in `state`, not `options`: it tells kinoforge "you already
+    transcribed this audio, here it is", so a repeated find on the same source does not pay
+    for Whisper again. Dropped when `options["force"]` asks for a clean re-run.
     """
     opts = {
         "clip_count": int(options.get("clip_count", 10)),
@@ -106,6 +101,10 @@ def build_clips_request(
     else:
         input_block = {"video_path": str(settings.output_dir / (video_rel or ""))}
 
+    state: dict[str, Any] = {}
+    if resume_transcript and not options.get("force"):
+        state["transcript"] = resume_transcript
+
     return {
         "job_id": uuid.uuid4().hex,
         "project_id": project_id,
@@ -114,8 +113,8 @@ def build_clips_request(
         "input": input_block,
         "options": opts,
         "config": config,
-        "definitions": _empty_definitions(),
-        "state": {},
+        "definitions": clips_defaults.clips_bundle(),
+        "state": state,
     }
 
 

@@ -244,14 +244,20 @@ async def _find_clips(project: dict, options: dict, rep: jobs.Reporter) -> dict:
     on the project so the UI can preview each one before anything is rendered."""
     project_id = project["id"]
     url = project.get("source_url")
+    # A prior find on this same project already transcribed this audio; resume it instead of
+    # paying for Whisper again (dropped when options["force"] asks for a clean re-run). The
+    # find workspace itself is thrown away below, so this is the only thing that survives.
+    resume_transcript = project.get("source_transcript") or None
     if url and not project.get("source"):
         audio = await _ensure_audio(project, url, rep)
         find_req = engine.build_clips_request(
-            f"{project_id}__find", None, options, audio_path=str(audio), analyze_only=True
+            f"{project_id}__find", None, options, audio_path=str(audio),
+            resume_transcript=resume_transcript, analyze_only=True,
         )
     else:
         find_req = engine.build_clips_request(
-            f"{project_id}__find", project["source"], options, analyze_only=True
+            f"{project_id}__find", project["source"], options,
+            resume_transcript=resume_transcript, analyze_only=True,
         )
     # Find on a throwaway slug so the analyze pass's pool writes never touch the project.
     rep.phase("engine: transcribe + find moments")
