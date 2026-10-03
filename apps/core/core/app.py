@@ -1,4 +1,5 @@
 import asyncio
+import re
 import shutil
 from pathlib import Path
 
@@ -133,8 +134,14 @@ async def _run_ytdlp(args: list[str], rep: jobs.Reporter) -> int:
         stderr=asyncio.subprocess.STDOUT,
     )
     assert proc.stdout is not None
-    async for raw in proc.stdout:
-        rep.log(raw.decode(errors="replace"))
+    pending = b""
+    while chunk := await proc.stdout.read(65536):
+        *lines, pending = re.split(rb"[\r\n]", pending + chunk)
+        for line in lines:
+            if line.strip():
+                rep.log(line.decode(errors="replace"))
+    if pending.strip():
+        rep.log(pending.decode(errors="replace"))
     return await proc.wait()
 
 
@@ -153,12 +160,17 @@ async def _fetch_audio(url: str, dest_dir: Path, rep: jobs.Reporter) -> Path:
 
 async def _fetch_range(url: str, start: float, end: float, dest_dir: Path,
                        rep: jobs.Reporter) -> Path:
-    """Exactly the [start, end] slice, keyframe-forced so it starts on the frame we asked for."""
+    """Exactly the [start, end] slice, keyframe-forced so it starts on the frame we asked for.
+    A slice already fetched into dest_dir is reused."""
+    cached = dest_dir / "segment.mp4"
+    if cached.exists() and cached.stat().st_size:
+        rep.log(f"reusing fetched segment [{start:.1f}-{end:.1f}]")
+        return cached
     for old in dest_dir.glob("segment.*"):
         old.unlink()
     code = await _run_ytdlp(
         [
-            "-f", "bestvideo*+bestaudio/best",
+            "-f", "bestvideo*[height<=1080]+bestaudio/best[height<=1080]/best",
             "--merge-output-format", "mp4",
             "--download-sections", f"*{start}-{end}",
             "--force-keyframes-at-cuts",
@@ -310,11 +322,12 @@ async def _render_source_light(project: dict, url: str, moments: list[dict],
                                rep: jobs.Reporter) -> dict:
     """Fetch each chosen moment's exact range, concatenate into one compact video, then render all
     of them in a single pass (captions from the sliced transcript). The full source is never
-    downloaded; only the approved clips' bytes land on disk, and only for the render."""
+    downloaded; only the approved clips' ranges land on disk, kept per range so a retry or
+    re-render reuses them."""
     project_id = project["id"]
     segdir = settings.output_dir / project_id / "_srclight" / "segments"
-    shutil.rmtree(segdir, ignore_errors=True)
     segdir.mkdir(parents=True, exist_ok=True)
+    used: set[str] = set()
     try:
         segments: list[Path] = []
         preset: list[dict] = []
@@ -326,7 +339,9 @@ async def _render_source_light(project: dict, url: str, moments: list[dict],
             if end <= start:
                 continue
             rep.phase(f"fetching clip {i}/{len(moments)}")
-            seg = await _fetch_range(url, start, end, segdir / f"seg{i}", rep)
+            key = f"{start:.3f}-{end:.3f}"
+            used.add(key)
+            seg = await _fetch_range(url, start, end, segdir / key, rep)
             segments.append(seg)
             duration = end - start
             preset.append({**moment, "start": offset, "end": offset + duration})
@@ -350,8 +365,11 @@ async def _render_source_light(project: dict, url: str, moments: list[dict],
         _relativize_artifacts(res)
         return res
     finally:
-        # Keep the cached audio for re-runs; drop the fetched segments and the compact video.
-        shutil.rmtree(segdir, ignore_errors=True)
+        # Keep the audio and this render's segments for re-runs; drop other ranges and the
+        # compact video.
+        for old in segdir.iterdir():
+            if old.name not in used:
+                shutil.rmtree(old, ignore_errors=True)
         (settings.output_dir / project_id / "source_compact.mp4").unlink(missing_ok=True)
 
 
