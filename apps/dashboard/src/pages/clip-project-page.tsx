@@ -10,7 +10,7 @@ import {
   type ClipStepSlug,
 } from "@videogpt/ui";
 
-import { ClipMomentsReview } from "../components/clip-moments-review";
+import { ClipStudio } from "../components/clip-studio";
 import { ClipResultGallery } from "../components/clip-result-gallery";
 import { ClipSourcePanel } from "../components/clip-source-panel";
 import { JobPanel } from "../components/job-panel";
@@ -76,6 +76,7 @@ export function ClipProjectPage({ initial }: { initial?: ProjectSnapshot }) {
   const [sourceKind, setSourceKind] = useState<ClipSourceKind>("url");
   const formRef = useRef<HTMLFormElement>(null);
   const hydratedRef = useRef<string | null>(null);
+  const [renderJobId, setRenderJobId] = useState<string | null>(null);
   const step = STEP_BY_VIEW[view] ?? "source";
   const providerOptions = useMemo(() => {
     const available = Array.from(
@@ -97,8 +98,6 @@ export function ClipProjectPage({ initial }: { initial?: ProjectSnapshot }) {
     const formats = Array.isArray(options.formats) ? options.formats.join(",") : DEFAULT_DRAFT.formats;
     setDraft({
       ...DEFAULT_DRAFT,
-      url: project.source_url ?? "",
-      hasFile: Boolean(project.source),
       clips: Number(options.clip_count) || DEFAULT_DRAFT.clips,
       minLength: Number(options.min_length) || DEFAULT_DRAFT.minLength,
       maxLength: Number(options.max_length) || DEFAULT_DRAFT.maxLength,
@@ -110,9 +109,16 @@ export function ClipProjectPage({ initial }: { initial?: ProjectSnapshot }) {
       momentProvider: String(options.moment_provider || DEFAULT_DRAFT.momentProvider),
       momentModel: String(options.moment_model || DEFAULT_DRAFT.momentModel),
     });
-    setSourceKind(project.source_url ? "url" : "file");
     hydratedRef.current = project.id;
   }, [project]);
+
+  const sourceUrl = project?.source_url;
+  const sourceFile = project?.source;
+  useEffect(() => {
+    if (!sourceUrl && !sourceFile) return;
+    setSourceKind(sourceUrl ? "url" : "file");
+    setDraft((current) => ({ ...current, url: sourceUrl ?? "", hasFile: Boolean(sourceFile) }));
+  }, [sourceUrl, sourceFile]);
 
   const artifacts = project?.last_result?.artifacts ?? [];
   const moments = project?.moments ?? [];
@@ -120,30 +126,41 @@ export function ClipProjectPage({ initial }: { initial?: ProjectSnapshot }) {
   const furthest =
     project?.last_result || moments.length || job?.kind === "clips" ? 2 : hasSource ? 1 : 0;
   const resultError = project?.last_result?.error;
+  const renderJob = job && job.id === renderJobId ? job : null;
 
   const after = useMemo(
     () =>
       step === "generate" ? (
         <div className="mt-5 grid gap-4">
-          {job?.status === "running" ? <JobPanel job={job} /> : null}
+          {job?.status === "running" && !renderJob ? <JobPanel job={job} /> : null}
           {resultError ? <StatusMessage tone="danger" title="Clip generation failed">{resultError}</StatusMessage> : null}
-          {!busy && project && moments.length ? (
-            <ClipMomentsReview
-              project={project}
-              moments={moments}
-              busy={busy}
-              onRender={(indices) => void renderClips(indices)}
-            />
+          {job?.status === "error" && job.error && !renderJob && job.error !== resultError ? (
+            <StatusMessage tone="danger" title="Last run failed">{job.error}</StatusMessage>
           ) : null}
-          {!busy && artifacts.length ? <ClipResultGallery artifacts={artifacts} /> : null}
+          {!moments.length && artifacts.length ? <ClipResultGallery artifacts={artifacts} /> : null}
         </div>
       ) : step === "source" && job?.kind === "url" ? (
         <div className="mt-5"><JobPanel job={job} /></div>
       ) : job?.status === "running" ? (
         <div className="mt-5"><JobPanel job={job} /></div>
       ) : null,
-    [artifacts, busy, job, moments, project, renderClips, resultError, step],
+    [artifacts, job, moments.length, renderJob, resultError, step],
   );
+
+  const studio =
+    step === "generate" && project && moments.length ? (
+      <div className="mt-6 border-t pt-6">
+        <ClipStudio
+          key={moments.map((moment) => `${moment.start}-${moment.end}`).join(",")}
+          project={project}
+          moments={moments}
+          artifacts={artifacts}
+          renderJob={renderJob}
+          busy={busy}
+          onRender={(indices) => void renderClips(indices).then(setRenderJobId)}
+        />
+      </div>
+    ) : null;
 
   if (loading) return <PageLoading />;
   if (error && !project) return <PageError message={error} />;
@@ -240,7 +257,12 @@ export function ClipProjectPage({ initial }: { initial?: ProjectSnapshot }) {
               }}
             />
           ),
-          after,
+          after: (
+            <>
+              {after}
+              {studio}
+            </>
+          ),
         }}
         renderForm={({ children, className }) => (
           <form

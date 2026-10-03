@@ -22,6 +22,9 @@ export type Moment = {
   text?: string;
   score?: number;
   language?: string;
+  title?: string;
+  ai_hook?: string;
+  ai_reason?: string;
 };
 
 export type Scene = {
