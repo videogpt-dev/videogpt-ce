@@ -38,12 +38,15 @@ const DEFAULT_DRAFT: ClipDraft = {
   minLength: 20,
   maxLength: 60,
   formats: "9:16",
+  quality: "high",
   whisper: "base",
   minInterest: 0.3,
   captions: true,
   momentFinder: "auto",
   momentProvider: "",
   momentModel: "",
+  transcript: "auto",
+  language: "",
 };
 
 function readDraft(form: HTMLFormElement, previous: ClipDraft, hasFile: boolean): ClipDraft {
@@ -55,12 +58,15 @@ function readDraft(form: HTMLFormElement, previous: ClipDraft, hasFile: boolean)
     minLength: Number(data.get("min_length")) || previous.minLength,
     maxLength: Number(data.get("max_length")) || previous.maxLength,
     formats: String(data.get("formats") || previous.formats),
+    quality: String(data.get("quality") || previous.quality),
     whisper: String(data.get("whisper_model") || previous.whisper),
     minInterest: Number(data.get("min_interest") ?? previous.minInterest),
     captions: data.has("captions"),
     momentFinder: String(data.get("moment_finder") || previous.momentFinder),
     momentProvider: String(data.get("moment_provider") || previous.momentProvider),
     momentModel: String(data.get("moment_model") ?? previous.momentModel),
+    transcript: String(data.get("transcript_source") || previous.transcript),
+    language: String(data.get("language") ?? previous.language).trim(),
   };
 }
 
@@ -176,7 +182,6 @@ export function ClipProjectPage({ initial }: { initial?: ProjectSnapshot }) {
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!hasSource) return;
-    const data = new FormData(event.currentTarget);
     const next = readDraft(event.currentTarget, draft, true);
     setDraft(next);
     if (next.minLength >= next.maxLength) {
@@ -197,9 +202,9 @@ export function ClipProjectPage({ initial }: { initial?: ProjectSnapshot }) {
       min_length: next.minLength,
       max_length: next.maxLength,
       formats: next.formats.split(",").filter(Boolean),
-      quality: String(data.get("quality") || ""),
-      language: String(data.get("language") || "").trim(),
-      transcript_source: String(data.get("transcript_source") || ""),
+      quality: next.quality,
+      language: next.language,
+      transcript_source: next.transcript,
       whisper_model: next.whisper,
       min_interest_score: next.minInterest,
       generate_captions: next.captions,
@@ -214,24 +219,13 @@ export function ClipProjectPage({ initial }: { initial?: ProjectSnapshot }) {
       segment={definition}
       eyebrow="Clip project"
       actions={<span className="max-w-64 truncate text-sm font-medium">{project.title}</span>}
-      contentClassName="xl:grid-cols-1"
-      inspector={false}
     >
       <ClipCreateLayout
         step={step}
         furthest={furthest}
         draft={draft}
         source={sourceKind}
-        defaults={{
-          count: draft.clips,
-          min_length: draft.minLength,
-          max_length: draft.maxLength,
-          formats: draft.formats.split(",").filter(Boolean),
-          captions: draft.captions,
-        }}
-        limits={{ maxClips: 50, minLengthSeconds: 5, maxLengthSeconds: 180, whisperModel: "base", minInterest: 0.3 }}
-        whisper={draft.whisper}
-        minInterest={draft.minInterest}
+        limits={{ maxClips: 50, minLengthSeconds: 5, maxLengthSeconds: 180 }}
         providerOptions={providerOptions}
         submitting={busy && job?.kind === "clips"}
         submitDisabled={!hasSource || busy}
