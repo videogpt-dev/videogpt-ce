@@ -59,7 +59,7 @@ export function SeriesNewPage() {
   }
 
   return (
-    <SegmentWorkspace segment={definition} eyebrow="New project" contentClassName="xl:grid-cols-1" inspector={false}>
+    <SegmentWorkspace segment={definition} eyebrow="New project">
       <SeriesCreateLayout
         draft={draft}
         submitting={submitting}

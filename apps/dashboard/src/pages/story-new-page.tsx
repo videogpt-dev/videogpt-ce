@@ -88,7 +88,7 @@ export function StoryNewPage() {
   }
 
   return (
-    <SegmentWorkspace segment={definition} eyebrow="New project" contentClassName="xl:grid-cols-1" inspector={false}>
+    <SegmentWorkspace segment={definition} eyebrow="New project">
       <StoryCreateLayout
         draft={draft}
         submitting={submitting}

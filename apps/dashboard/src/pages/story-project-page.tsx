@@ -11,7 +11,7 @@ import {
   StoryLockedNotice,
   StorySceneList,
   StoryWorkspaceLayout,
-  STORY_STEPS,
+  StorySteps,
   type StoryStepKind,
   type StoryStepStatus,
 } from "@videogpt/ui";
@@ -26,7 +26,7 @@ const VALID_VIEWS = new Set<StoryStepKind>(["story", "characters", "scenes", "mu
 
 // Community Edition renders local artifacts only; the shared "Publish" step is a local Export
 // here (no social publishing), so relabel it while keeping the "publish" kind for routing.
-const CE_STORY_STEPS = STORY_STEPS.map((step) =>
+const CE_STORY_STEPS = StorySteps.all.map((step) =>
   step.kind === "publish" ? { ...step, label: "Export" } : step,
 );
 

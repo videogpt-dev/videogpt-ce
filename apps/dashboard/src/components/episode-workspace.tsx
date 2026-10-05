@@ -11,7 +11,7 @@ import {
   StoryLockedNotice,
   StorySceneList,
   StoryWorkspaceLayout,
-  STORY_STEPS,
+  StorySteps,
   type StoryStepKind,
   type StoryStepStatus,
 } from "@videogpt/ui";
@@ -21,7 +21,7 @@ import { JobPanel } from "./job-panel";
 import type { Job, Project } from "../types";
 
 // Community Edition renders local artifacts only, so the shared "Publish" step is a local Export.
-const EPISODE_STEPS = STORY_STEPS.map((step) =>
+const EPISODE_STEPS = StorySteps.all.map((step) =>
   step.kind === "publish" ? { ...step, label: "Export" } : step,
 );
 const VALID_VIEWS = new Set<StoryStepKind>(["story", "characters", "scenes", "music", "assemble", "publish"]);
