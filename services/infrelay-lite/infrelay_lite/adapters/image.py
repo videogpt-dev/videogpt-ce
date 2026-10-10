@@ -11,6 +11,7 @@ from infrelay_lite.adapters.util import fal_subscribe, first_media_url, run_opti
 from infrelay_lite.models import MediaKind
 
 OPENROUTER_BASE = "https://openrouter.ai/api/v1"
+DEFAULT_ASPECT_RATIO = "9:16"
 
 
 class FalImage(Adapter):
@@ -66,7 +67,12 @@ class OpenRouterImage(Adapter):
             resp = client.chat.completions.create(
                 model=model,
                 messages=[{"role": "user", "content": content}],
-                extra_body={"modalities": ["image", "text"]},
+                extra_body={
+                    "modalities": ["image", "text"],
+                    "image_config": {
+                        "aspect_ratio": params.get("aspect_ratio") or DEFAULT_ASPECT_RATIO
+                    },
+                },
             )
         except Exception as e:
             raise AdapterError(f"OpenRouter error: {e}") from e
