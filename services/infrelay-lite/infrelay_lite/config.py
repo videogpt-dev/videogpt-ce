@@ -29,6 +29,13 @@ class Settings(BaseSettings):
     videogpt_api_key: str = ""
     videogpt_cloud_url: str = ""
 
+    # Task routes (infrelay_lite.tasks): JSON of task or kind to its ordered "provider/model"
+    # steps, e.g. {"text": ["openrouter/openai/gpt-4o-mini"], "image": ["fal/fal-ai/flux/schnell"]}.
+    infrelay_routes: str = ""
+    # Most fallback picks one call may name, and the most items a listing page returns.
+    max_fallbacks: int = 3
+    max_page_size: int = 50
+
     @property
     def is_dev(self) -> bool:
         return self.infrelay_env.strip().lower() == "dev"

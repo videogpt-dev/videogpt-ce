@@ -1,7 +1,7 @@
 # infrelay-lite
 
-The self-host tier of the inference gateway. It serves the same `POST /v1/generate` contract
-that Kinoforge calls, but stripped to what a single-user self-host install needs:
+The self-host tier of the inference gateway. It serves the same `POST /v1/inference/{task}`
+contract that Kinoforge calls, but stripped to what a single-user self-host install needs:
 
 - **OpenRouter + fal only** (the two providers that cover text, image, video, music, and TTS).
 - **Keys from the environment** (`FAL_KEY`, `OPENROUTER_API_KEY`); a request may still inject
@@ -35,12 +35,27 @@ INFRELAY_URL=http://localhost:8090
 | Method | Path | Notes |
 |---|---|---|
 | GET | `/health` | open |
-| GET | `/v1/models?kind=` | which providers serve a kind (lite ships no model catalog) |
-| POST | `/v1/generate` | `{kind, provider, model, input, credential?}` -> `{output:{type,value,meta}, usage}` |
+| GET | `/v1/tasks` | every task with its kind and group |
+| GET | `/v1/models/{all\|kind}` | which providers serve a kind (lite ships no model catalog), paged |
+| POST | `/v1/inference/{task}` | `{inference, input, credential?}` -> `{task, provider, model, output:{type,value,meta}, usage}` |
 
-`kind` is one of `text`, `image`, `video`, `music`, `audio`, `transcribe`. Pass the provider's
-own `model` id directly. `output.type` is `url`, `b64`, `text`, or `transcript`; the caller
-downloads or stores it.
+`task` is a kind (`text`, `image`, `video`, `music`, `audio`, `transcribe`) or a product task
+(`story.image`, `viralClip.find`, ...), the same list as the cloud gateway. `inference` is:
+
+- `"auto"` (the default): the task's route from `INFRELAY_ROUTES`, else its kind's, moving on
+  when a step fails;
+- a model id: every provider lite has a key for that serves the kind, in turn;
+- `{"provider": "fal", "model": "fal-ai/flux/schnell", "fallback": [...]}`: exactly that, then
+  up to `MAX_FALLBACKS` (default 3) more picks.
+
+`INFRELAY_ROUTES` is JSON, task or kind to ordered `provider/model` steps:
+
+```sh
+INFRELAY_ROUTES='{"text": ["openrouter/openai/gpt-4o-mini"], "image": ["fal/fal-ai/flux/schnell"]}'
+```
+
+Lite answers every call directly: a `callback_url` (the cloud gateway's queue) is refused.
+`output.type` is `url`, `b64`, `text`, or `transcript`; the caller downloads or stores it.
 
 ## Auth
 
@@ -55,5 +70,6 @@ so clips work with no provider key. The model downloads on first use into `HF_HO
 
 ## Not in lite
 
-Extra providers, routing, key pooling, credits, and admin all live in the full cloud gateway.
+Extra providers, a model catalog, key pooling, the queue, credits, and admin all live in the
+full cloud gateway.
 Self-host installs that need those point `INFRELAY_URL` at the cloud one.

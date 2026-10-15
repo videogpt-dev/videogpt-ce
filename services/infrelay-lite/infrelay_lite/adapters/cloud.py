@@ -1,10 +1,11 @@
 """Managed cloud gateway as a lite provider.
 
-Picking provider `cloud` forwards the generation to the hosted infrelay via its `/v1/auto`
-autorouter, so a self-host user gets the full cloud roster and routing without holding any
-provider key. Auth is the user's own API key (VIDEOGPT_API_KEY), minted in the dashboard; the
-cloud pins usage to that key's tenant and spends its credits. The /v1 contract is byte-identical
-(output.type / value / mime / meta), so this is a pass-through with no translation.
+Picking provider `cloud` forwards the call to the hosted infrelay's POST /v1/inference/{task}
+with model `auto` (or the model named), so a self-host user gets the full cloud roster and
+routing without holding any provider key. Auth is the user's own API key (VIDEOGPT_API_KEY),
+minted in the dashboard; the cloud pins usage to that key's tenant and spends its credits. The
+/v1 contract is byte-identical (output.type / value / mime / meta), so this is a pass-through
+with no translation.
 """
 
 from __future__ import annotations
@@ -30,16 +31,13 @@ class CloudGateway(Adapter):
         base = settings().videogpt_cloud_url.rstrip("/")
         if not base:
             raise AdapterError("cloud provider needs VIDEOGPT_CLOUD_URL")
-        # A configured STORY_*_MODEL arrives as params["model"]; it is a catalog NAME here, not a
-        # provider model id. Pull it out of the generation input and pass it as the pin `name`
-        # (blank/'auto' = the cloud default route). See GET /v1/catalog for valid names.
+        # The model picked for `cloud` is a model name on the cloud (blank: its route).
         name = str(params.pop("model", "") or "").strip()
-        body = {"kind": self.kind.value, "input": params}
-        if name and name.lower() != "auto":
-            body["name"] = name
+        task = str(options.get("task") or self.kind.value)
+        body = {"inference": {"model": name or "auto"}, "input": params}
         try:
             resp = httpx.post(
-                f"{base}/v1/auto",
+                f"{base}/v1/inference/{task}",
                 headers={"Authorization": f"Bearer {token}"},
                 json=body,
                 timeout=300.0,
