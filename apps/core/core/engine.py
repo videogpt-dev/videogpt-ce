@@ -63,6 +63,8 @@ def build_clips_request(
         model = str(options.get("moment_model") or os.getenv("MOMENT_FINDER_MODEL") or "").strip()
         if provider and model:
             moment_route = {"provider": provider, "model": model}
+    if moment_finder == "auto" and not moment_route:
+        moment_finder = "offline"  # auto reads with an LLM only when a model is given
     context_window = int(options.get("context_window") or 1_000_000)
     config: dict[str, Any] = {
         "transcription": {

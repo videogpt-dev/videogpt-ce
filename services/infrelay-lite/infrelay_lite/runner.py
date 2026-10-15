@@ -1,11 +1,13 @@
-"""Resolve the provider key and run one adapter. No pooling, no metering, no fallback."""
+"""Plan a task's candidates and run them in turn until one answers. Keys come from the
+environment (or the request); no pooling, no metering."""
 
 from __future__ import annotations
 
 from infrelay_lite.adapters.base import AdapterError, Output
 from infrelay_lite.adapters.registry import find, providers_for
 from infrelay_lite.config import settings
-from infrelay_lite.models import Credential, MediaKind
+from infrelay_lite.models import Choice, Credential, MediaKind, Pick
+from infrelay_lite.tasks import AITask, Step, Tasks
 
 # Keyed providers lite ships. Key comes from this env var unless a request injects one.
 # "cloud" is the managed hosted gateway, keyed by the user's dashboard-minted API key.
@@ -34,6 +36,54 @@ def resolve_token(provider: str, credential: Credential | None) -> tuple[str, bo
     if credential and credential.api_key:
         return credential.api_key, True
     return _platform_key(provider), False
+
+
+def ready(provider: str, credential: Credential | None) -> bool:
+    """On-box, or there is a key for it."""
+    return provider in _LOCAL_PROVIDERS or bool(resolve_token(provider, credential)[0])
+
+
+def plan(task: AITask, choice: Choice, credential: Credential | None) -> list[Step]:
+    """The candidates a pick and its fallbacks resolve to, each pair once. An exact pick runs as
+    given; a route step or a named model is left out when lite cannot run it."""
+    kind = Tasks.kind(task)
+    out: list[Step] = []
+    for pick in choice.picks():
+        exact = not (pick.auto_model or pick.any_provider)
+        for step in [Step(pick.provider, pick.model)] if exact else _found(task, kind, pick):
+            runnable = exact or (find(step.provider, kind) and ready(step.provider, credential))
+            if step not in out and runnable:
+                out.append(step)
+    return out
+
+
+def _found(task: AITask, kind: MediaKind, pick: Pick) -> list[Step]:
+    if pick.auto_model:
+        steps = Tasks.route(task)
+        return steps if pick.any_provider else [s for s in steps if s.provider == pick.provider]
+    return [Step(provider, pick.model) for provider in providers_for(kind)]
+
+
+def run_first(
+    task: AITask, steps: list[Step], params: dict, credential: Credential | None
+) -> tuple[Output, bool, Step]:
+    """The first step that answers; when every one fails, the last error."""
+    last: AdapterError | None = None
+    for step in steps:
+        try:
+            output, byok = run(
+                Tasks.kind(task),
+                step.provider,
+                step.model,
+                params,
+                credential,
+                {"task": task.value},
+            )
+        except AdapterError as exc:
+            last = exc
+            continue
+        return output, byok, step
+    raise last or AdapterError("nothing to run")
 
 
 def run(

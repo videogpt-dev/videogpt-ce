@@ -19,11 +19,14 @@ def dimensions(aspect: str) -> tuple[int, int]:
 
 
 async def generate(
-    kind: str, provider: str, model: str, input_: dict[str, Any]
+    task: str, provider: str, model: str, input_: dict[str, Any]
 ) -> dict[str, Any]:
-    body = {"kind": kind, "provider": provider, "model": model, "input": input_}
+    """One inference call for a task (POST /v1/inference/{task}); a blank model is the task's
+    route on the gateway."""
+    pick = {"provider": provider or "auto", "model": model or "auto"}
+    body = {"inference": pick, "input": input_}
     async with httpx.AsyncClient(timeout=None) as client:
-        resp = await client.post(f"{settings.infrelay_url}/v1/generate", json=body)
+        resp = await client.post(f"{settings.infrelay_url}/v1/inference/{task}", json=body)
     resp.raise_for_status()
     return resp.json().get("output") or {}
 
@@ -49,7 +52,7 @@ def _scene_dir(pid: str) -> Path:
 
 async def save_image(pid: str, index: int, prompt: str, aspect: str) -> str:
     output = await generate(
-        "image",
+        "story.image",
         settings.image_provider,
         settings.image_model,
         {"prompt": prompt, "aspect_ratio": aspect},
@@ -62,7 +65,7 @@ async def save_image(pid: str, index: int, prompt: str, aspect: str) -> str:
 
 async def save_voice(pid: str, index: int, text: str, voice: str) -> dict[str, Any]:
     output = await generate(
-        "audio", settings.tts_provider, "", {"text": text, "voice": voice}
+        "story.voice", settings.tts_provider, "", {"text": text, "voice": voice}
     )
     data = await _bytes_from_output(output)
     name = f"scene-{index}.mp3"
@@ -77,7 +80,7 @@ async def save_voice(pid: str, index: int, text: str, voice: str) -> dict[str, A
 
 async def save_music(pid: str, prompt: str, seconds: int) -> str:
     output = await generate(
-        "music",
+        "story.music",
         settings.music_provider,
         settings.music_model,
         {"prompt": prompt, "seconds": seconds},

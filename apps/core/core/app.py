@@ -43,11 +43,8 @@ async def inference_providers(kind: str = "text") -> dict:
         headers["Authorization"] = f"Bearer {settings.infrelay_service_token}"
     try:
         async with httpx.AsyncClient(timeout=15) as client:
-            response = await client.get(
-                f"{settings.infrelay_url}/v1/models",
-                params={"kind": kind},
-                headers=headers,
-            )
+            url = f"{settings.infrelay_url}/v1/models/{kind}"
+            response = await client.get(url, headers=headers)
         response.raise_for_status()
         payload = response.json()
     except (httpx.HTTPError, ValueError) as exc:
