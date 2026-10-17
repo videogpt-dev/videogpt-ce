@@ -51,8 +51,9 @@ def plan(task: AITask, choice: Choice, credential: Credential | None) -> list[St
     for pick in choice.picks():
         exact = not (pick.auto_model or pick.any_provider)
         for step in [Step(pick.provider, pick.model)] if exact else _found(task, kind, pick):
-            runnable = exact or (find(step.provider, kind) and ready(step.provider, credential))
-            if step not in out and runnable:
+            if step in out or choice.excludes(step.provider, step.model):
+                continue
+            if exact or (find(step.provider, kind) and ready(step.provider, credential)):
                 out.append(step)
     return out
 

@@ -48,6 +48,9 @@ INFRELAY_URL=http://localhost:8090
 - `{"provider": "fal", "model": "fal-ai/flux/schnell", "fallback": [...]}`: exactly that, then
   up to `MAX_FALLBACKS` (default 3) more picks.
 
+`exclude: [{provider, model}]` on any of these leaves those models out (provider `auto`: on any
+provider).
+
 `INFRELAY_ROUTES` is JSON, task or kind to ordered `provider/model` steps:
 
 ```sh

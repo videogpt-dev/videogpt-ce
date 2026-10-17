@@ -142,6 +142,25 @@ def test_auto_walks_the_tasks_route_else_its_kinds(monkeypatch):
     assert seen == ["fal-ai/broken", "fal-ai/flux/schnell", "fal-ai/x"]
 
 
+def test_excluded_models_are_skipped_so_the_route_moves_on(monkeypatch):
+    seen: list = []
+    _fal_images(monkeypatch, seen)
+    routes = {"image": ["fal/fal-ai/a", "fal/fal-ai/b"]}
+    monkeypatch.setattr(settings(), "infrelay_routes", json.dumps(routes))
+
+    def ask(exclude):
+        pick = {"model": "auto", "exclude": exclude}
+        return client.post(
+            "/v1/inference/image", json={"inference": pick, "input": {"prompt": "p"}}
+        )
+
+    skipped = ask([{"provider": "fal", "model": "fal-ai/a"}])
+    nothing = ask(["fal-ai/a", "fal-ai/b"])
+
+    assert (skipped.json()["model"], seen) == ("fal-ai/b", ["fal-ai/b"])
+    assert nothing.status_code == 404
+
+
 def test_without_a_route_auto_has_nothing_to_run(monkeypatch):
     monkeypatch.setattr(settings(), "infrelay_routes", "")
     res = client.post("/v1/inference/story.video", json={"input": {"prompt": "p"}})
