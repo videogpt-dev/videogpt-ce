@@ -47,8 +47,11 @@ class Pick(BaseModel):
 
 class Choice(Pick):
     fallback: list[Pick] = Field(default_factory=list, description="Picks tried after this one.")
+    exclude: list[Pick] = Field(
+        default_factory=list, max_length=50, description="Models not to try (`auto`: any provider)."
+    )
 
-    @field_validator("fallback", mode="before")
+    @field_validator("fallback", "exclude", mode="before")
     @classmethod
     def _one_or_many(cls, value: Any) -> list:
         if value is None:
@@ -58,6 +61,11 @@ class Choice(Pick):
 
     def picks(self) -> list[Pick]:
         return [Pick(model=self.model, provider=self.provider), *self.fallback]
+
+    def excludes(self, provider: str, model: str) -> bool:
+        return any(
+            p.model == model and (p.any_provider or p.provider == provider) for p in self.exclude
+        )
 
 
 class InferenceRequest(BaseModel):
