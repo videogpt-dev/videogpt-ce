@@ -409,7 +409,8 @@ async def _write_story(project: dict, options: dict, rep: jobs.Reporter) -> dict
     project["last_story"] = res
     store.save_project(project)
     if res.get("error"):
-        return res
+        detail = res.get("detail")
+        return {**res, "error": f"{res['error']} {detail}"} if detail else res
     rep.phase(f"{len(res.get('story', {}).get('scenes', []))} scenes")
     return res
 
