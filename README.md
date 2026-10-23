@@ -9,6 +9,14 @@
   Cut short clips out of long videos, and generate new videos from a prompt.
 </p>
 
+<p align="center">
+  <a href="https://videogpt.dev"><img src="https://img.shields.io/badge/website-videogpt.dev-7c3aed" alt="Website"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-PolyForm%20NC%201.0.0-blue" alt="License"></a>
+  <a href="https://github.com/videogpt-dev/videogpt-ce/commits/main"><img src="https://img.shields.io/github/last-commit/videogpt-dev/videogpt-ce" alt="Last commit"></a>
+  <img src="https://img.shields.io/badge/docker-compose-2496ED?logo=docker&logoColor=white" alt="Docker Compose">
+  <img src="https://img.shields.io/badge/self--hosted-yes-success" alt="Self-hosted">
+</p>
+
 ---
 
 This is the self-host edition of [videogpt.dev](https://videogpt.dev). It runs the same open-source
