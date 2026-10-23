@@ -12,7 +12,7 @@ dependencies = [
     "fal-client>=0.5",
     "openai>=1.40",
     "faster-whisper>=1.0",
-    "edge-tts>=6.1",
+    "edge-tts>=7.0",
 ]
 
 [project.optional-dependencies]

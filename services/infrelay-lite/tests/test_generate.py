@@ -18,7 +18,7 @@ def test_health_open():
 def test_models_lists_providers_per_kind_or_all():
     res = client.get("/v1/models/video")
     assert res.status_code == 200
-    assert [i["provider"] for i in res.json()["items"]] == ["cloud", "fal"]
+    assert [i["provider"] for i in res.json()["items"]] == ["fal", "videogpt"]
     assert client.get("/v1/models/all", params={"per_page": 2}).json()["per_page"] == 2
     assert client.get("/v1/models/story.video").status_code == 404
     assert client.get("/v1/models/hologram").status_code == 404
@@ -165,6 +165,81 @@ def test_without_a_route_auto_has_nothing_to_run(monkeypatch):
     monkeypatch.setattr(settings(), "infrelay_routes", "")
     res = client.post("/v1/inference/story.video", json={"input": {"prompt": "p"}})
     assert res.status_code == 404
+
+
+def test_videogpt_auto_lets_videogpt_route_without_a_local_route(monkeypatch):
+    sent: list = []
+
+    class Reply:
+        status_code = 200
+
+        @staticmethod
+        def json():
+            return {"output": {"type": "text", "value": "a story", "mime": "text/plain"}}
+
+    def post(url, headers, json, timeout):
+        sent.append((url, headers["Authorization"], json["inference"]))
+        return Reply()
+
+    monkeypatch.setattr("infrelay_lite.adapters.videogpt.httpx.post", post)
+    monkeypatch.setattr(settings(), "infrelay_routes", "")
+    monkeypatch.setattr(settings(), "videogpt_api_key", "vgpt-key")
+    monkeypatch.setattr(settings(), "videogpt_cloud_url", "https://cloud.test/")
+    body = {"inference": {"provider": "videogpt", "model": "auto"}, "input": {"prompt": "p"}}
+
+    res = client.post("/v1/inference/story.write", json=body)
+
+    assert (res.status_code, res.json()["output"]["value"]) == (200, "a story")
+    assert sent == [
+        ("https://cloud.test/v1/inference/story.write", "Bearer vgpt-key", {"model": "auto"})
+    ]
+
+
+def test_auto_on_a_named_provider_without_a_route_runs_its_default(monkeypatch):
+    from infrelay_lite.models import Choice
+    from infrelay_lite.runner import plan
+    from infrelay_lite.tasks import AITask, Step
+
+    monkeypatch.setattr(settings(), "infrelay_routes", json.dumps({"audio": ["fal/fal-ai/tts"]}))
+    monkeypatch.setattr(settings(), "fal_key", "fal-env")
+
+    voice = plan(AITask.STORY_VOICE, Choice(provider="edge", model="auto"), None)
+    routed = plan(AITask.STORY_VOICE, Choice(provider="fal", model="auto"), None)
+
+    assert (voice, routed) == ([Step("edge", "")], [Step("fal", "fal-ai/tts")])
+
+
+def test_videogpt_late_answer_is_read_at_its_retry_url(monkeypatch):
+    class Reply:
+        def __init__(self, status, body, retry_after=None):
+            self.status_code, self._body = status, body
+            self.text = json.dumps(body)
+            self.headers = {"Retry-After": retry_after} if retry_after else {}
+
+        def json(self):
+            return self._body
+
+    link = "/v1/requests/r1"
+    late = Reply(504, {"detail": "no answer within 30s", "retry_url": link})
+    reads = [
+        Reply(202, {"status": "running"}, "1"),
+        Reply(200, {"output": {"type": "text", "value": "a story", "mime": "text/plain"}}),
+    ]
+    got: list = []
+    monkeypatch.setattr("infrelay_lite.adapters.videogpt.httpx.post", lambda url, **kw: late)
+    monkeypatch.setattr(
+        "infrelay_lite.adapters.videogpt.httpx.get",
+        lambda url, **kw: got.append(url) or reads.pop(0),
+    )
+    monkeypatch.setattr("infrelay_lite.adapters.videogpt.time.sleep", lambda s: None)
+    monkeypatch.setattr(settings(), "videogpt_api_key", "vgpt-key")
+    monkeypatch.setattr(settings(), "videogpt_cloud_url", "https://cloud.test")
+    body = {"inference": {"provider": "videogpt", "model": "auto"}, "input": {"prompt": "p"}}
+
+    res = client.post("/v1/inference/story.write", json=body)
+
+    assert (res.status_code, res.json()["output"]["value"]) == (200, "a story")
+    assert got == ["https://cloud.test/v1/requests/r1"] * 2
 
 
 def test_fallbacks_run_in_order_and_are_capped(monkeypatch):

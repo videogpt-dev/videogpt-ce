@@ -5,16 +5,17 @@ from __future__ import annotations
 
 from infrelay_lite.adapters.base import AdapterError, Output
 from infrelay_lite.adapters.registry import find, providers_for
+from infrelay_lite.adapters.videogpt import PROVIDER as VIDEOGPT
 from infrelay_lite.config import settings
 from infrelay_lite.models import Choice, Credential, MediaKind, Pick
 from infrelay_lite.tasks import AITask, Step, Tasks
 
 # Keyed providers lite ships. Key comes from this env var unless a request injects one.
-# "cloud" is the managed hosted gateway, keyed by the user's dashboard-minted API key.
+# "videogpt" is the hosted videogpt.dev gateway, keyed by the user's dashboard-minted API key.
 _PROVIDER_ENV: dict[str, str] = {
     "fal": "FAL_KEY",
     "openrouter": "OPENROUTER_API_KEY",
-    "cloud": "VIDEOGPT_API_KEY",
+    VIDEOGPT: "VIDEOGPT_API_KEY",
 }
 
 # On-box providers that need no account key.
@@ -26,7 +27,7 @@ def _platform_key(provider: str) -> str:
         return settings().fal_key
     if provider == "openrouter":
         return settings().openrouter_api_key
-    if provider == "cloud":
+    if provider == VIDEOGPT:
         return settings().videogpt_api_key
     return ""
 
@@ -61,7 +62,11 @@ def plan(task: AITask, choice: Choice, credential: Credential | None) -> list[St
 def _found(task: AITask, kind: MediaKind, pick: Pick) -> list[Step]:
     if pick.auto_model:
         steps = Tasks.route(task)
-        return steps if pick.any_provider else [s for s in steps if s.provider == pick.provider]
+        if pick.any_provider:
+            return steps
+        # A named provider runs its steps of the route, else its own default (videogpt.dev
+        # routes `auto` itself; edge and whisper have one voice or model).
+        return [s for s in steps if s.provider == pick.provider] or [Step(pick.provider, "")]
     return [Step(provider, pick.model) for provider in providers_for(kind)]
 
 

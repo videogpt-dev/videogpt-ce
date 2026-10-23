@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 from infrelay_lite.adapters.base import Adapter
-from infrelay_lite.adapters.cloud import CloudGateway
 from infrelay_lite.adapters.image import FalImage, OpenRouterImage
 from infrelay_lite.adapters.music import FalMusic
 from infrelay_lite.adapters.edge_tts import EdgeSpeech
 from infrelay_lite.adapters.speech import FalSpeech
 from infrelay_lite.adapters.text import OpenRouterText
 from infrelay_lite.adapters.video import FalVideo
+from infrelay_lite.adapters.videogpt import VideoGPTGateway
 from infrelay_lite.adapters.whisper import LocalWhisper
 from infrelay_lite.models import MediaKind
 
@@ -22,8 +22,8 @@ _ADAPTERS: list[Adapter] = [
     FalSpeech(),
     EdgeSpeech(),
     LocalWhisper(),
-    # The managed cloud gateway serves every kind through its own autorouter.
-    *(CloudGateway(kind) for kind in MediaKind),
+    # videogpt.dev serves every kind through its own autorouter.
+    *(VideoGPTGateway(kind) for kind in MediaKind),
 ]
 
 REGISTRY: dict[tuple[str, MediaKind], Adapter] = {

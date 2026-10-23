@@ -50,7 +50,7 @@ async def _synthesize(text: str, voice: str) -> tuple[bytes, list[dict]]:
         audio = bytearray()
         words: list[dict] = []
         try:
-            communicate = edge_tts.Communicate(text, voice)
+            communicate = edge_tts.Communicate(text, voice, boundary="WordBoundary")
             async for chunk in communicate.stream():
                 if chunk["type"] == "audio":
                     audio.extend(chunk["data"])
