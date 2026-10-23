@@ -1,12 +1,12 @@
 [submodule "apps/kinoforge"]
 	path = apps/kinoforge
-	url = git@github.com:videogpt-dev/kinoforge.git
+	url = https://github.com/videogpt-dev/kinoforge.git
 [submodule "packages/videogpt-ui"]
 	path = packages/videogpt-ui
-	url = git@github.com:videogpt-dev/videogpt-ui.git
+	url = https://github.com/videogpt-dev/videogpt-ui.git
 [submodule "packages/videogpt-catalog"]
 	path = packages/videogpt-catalog
-	url = git@github.com:videogpt-dev/videogpt-catalog.git
+	url = https://github.com/videogpt-dev/videogpt-catalog.git
 [submodule "studio"]
 	path = studio
-	url = git@github.com:videogpt-dev/videogpt-studio.git
+	url = https://github.com/videogpt-dev/videogpt-studio.git

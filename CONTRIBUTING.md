@@ -14,7 +14,7 @@ Bug reports, fixes, and improvements are all welcome.
 This is a monorepo with submodules. After cloning:
 
 ```sh
-git clone --recurse-submodules git@github.com:videogpt-dev/videogpt-ce.git
+git clone --recurse-submodules https://github.com/videogpt-dev/videogpt-ce.git
 ```
 
 If you already cloned without `--recurse-submodules`:

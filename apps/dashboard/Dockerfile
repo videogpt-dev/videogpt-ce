@@ -1,4 +1,4 @@
-FROM node:24-bookworm-slim AS build
+FROM node:24-bookworm-slim AS deps
 WORKDIR /repo
 RUN corepack enable && corepack prepare pnpm@11.18.0 --activate
 
@@ -8,6 +8,16 @@ COPY packages/videogpt-catalog ./packages/videogpt-catalog
 COPY assets ./assets
 COPY apps/dashboard ./apps/dashboard
 RUN pnpm install --frozen-lockfile
+
+# Vite dev server with HMR, for `target: dev` in a local compose override.
+FROM deps AS dev
+ENV PORT=3000
+ENV CORE_URL=http://core:8000
+WORKDIR /repo/apps/dashboard
+EXPOSE 3000
+CMD ["pnpm", "exec", "react-router", "dev", "--host", "0.0.0.0", "--port", "3000"]
+
+FROM deps AS build
 RUN pnpm --filter self-hosted-dashboard build
 
 FROM node:24-bookworm-slim AS runtime

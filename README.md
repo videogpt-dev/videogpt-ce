@@ -36,7 +36,7 @@ engine the cloud product uses, so everything happens on your box. The engine has
 You need Docker and Docker Compose. Nothing else.
 
 ```sh
-git clone --recurse-submodules git@github.com:videogpt-dev/videogpt-ce.git
+git clone --recurse-submodules https://github.com/videogpt-dev/videogpt-ce.git
 cd videogpt-ce
 cp .env.example .env          # optional: add provider keys for the AI features
 docker compose up --build
@@ -73,3 +73,8 @@ address in [SECURITY.md](SECURITY.md), not the public issue tracker.
 Source-available under the [PolyForm Noncommercial License 1.0.0](LICENSE). Free for personal
 and other noncommercial use; running it as a commercial service is not permitted. For
 commercial use, use [videogpt.dev](https://videogpt.dev).
+
+The engine ([kinoforge](https://github.com/videogpt-dev/kinoforge)) uses the same license. The
+UI kit ([videogpt-ui](https://github.com/videogpt-dev/videogpt-ui)), the catalog
+([videogpt-catalog](https://github.com/videogpt-dev/videogpt-catalog)) and the editor
+([videogpt-studio](https://github.com/videogpt-dev/videogpt-studio)) are MIT.

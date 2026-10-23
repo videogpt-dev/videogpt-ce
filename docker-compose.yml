@@ -6,14 +6,9 @@ services:
     environment:
       FAL_KEY: ${FAL_KEY:-}
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
-      # Managed cloud gateway (provider "cloud"): a dashboard-minted key + the hosted infrelay
-      # URL. Set both to run on the full cloud roster and spend your account's credits.
+      # Provider "videogpt": your videogpt.dev API key; spends your account's credits.
       VIDEOGPT_API_KEY: ${VIDEOGPT_API_KEY:-}
-      VIDEOGPT_CLOUD_URL: ${VIDEOGPT_CLOUD_URL:-}
-    # Lets VIDEOGPT_CLOUD_URL=http://host.docker.internal:8090 reach a cloud infrelay running on
-    # the host (dev). A real deployed gateway URL needs neither this nor host.docker.internal.
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+      VIDEOGPT_CLOUD_URL: ${VIDEOGPT_CLOUD_URL:-https://infrelay.videogpt.dev}
     volumes:
       - whisper-cache:/cache/hf
     expose:
@@ -25,8 +20,7 @@ services:
     environment:
       INFRELAY_URL: http://infrelay-lite:8090
       KINOFORGE_SHARED_ROOT: /data/output
-      # Console verbosity (per-request default). error is quiet; set debug or trace to see the
-      # full clips/story pipeline in `docker compose logs -f kinoforge`.
+      # error is quiet; debug or trace logs the full pipeline.
       KINOFORGE_LOG_LEVEL: ${KINOFORGE_LOG_LEVEL:-debug}
     volumes:
       - data:/data
@@ -43,8 +37,7 @@ services:
     environment:
       PORT: 3000
       OUTPUT_DIR: /data/output
-    # Headless Chromium (Remotion renders) crashes with "target-closed" on the 64MB default
-    # /dev/shm; give it room so multi-frame story renders complete.
+    # Headless Chromium crashes on the 64MB default /dev/shm.
     shm_size: "1gb"
     volumes:
       - data:/data
@@ -60,9 +53,7 @@ services:
       EDITOR_URL: http://editor:3000
       CORE_DATA_DIR: /data
       KINOFORGE_SHARED_ROOT: /data/output
-      # Console verbosity core stamps on every kinoforge request (via the interceptor).
       KINOFORGE_LOG_LEVEL: ${KINOFORGE_LOG_LEVEL:-debug}
-      # Clip moment-finder default when the UI does not choose one.
       MOMENT_FINDER: ${MOMENT_FINDER:-auto}
       MOMENT_FINDER_PROVIDER: ${MOMENT_FINDER_PROVIDER:-}
       MOMENT_FINDER_MODEL: ${MOMENT_FINDER_MODEL:-}
@@ -75,7 +66,7 @@ services:
     volumes:
       - data:/data
     ports:
-      - "${CORE_PORT:-8000}:8000"
+      - "${BIND_HOST:-127.0.0.1}:${CORE_PORT:-8000}:8000"
     depends_on:
       - kinoforge
       - editor
@@ -89,7 +80,7 @@ services:
       CORE_URL: http://core:8000
       PORT: 3000
     ports:
-      - "${DASHBOARD_PORT:-5173}:3000"
+      - "${BIND_HOST:-127.0.0.1}:${DASHBOARD_PORT:-5173}:3000"
     depends_on:
       - core
     restart: unless-stopped

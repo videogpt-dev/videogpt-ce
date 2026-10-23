@@ -5,6 +5,7 @@ dist/
 !.env.example
 *.log
 .DS_Store
+docker-compose.override.yml
 .react-router/
 __pycache__/
 .venv/
